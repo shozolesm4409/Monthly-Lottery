@@ -387,29 +387,26 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
     return fallbacks[resolvedRole]?.[menuKey] ?? false;
   };
 
-  // Fetch corresponding ManagedUser document in Firestore if exists to verify Access Role
+  // Fetch corresponding ManagedUser document in Firestore if exists to verify Access Role - Use real-time listener
   useEffect(() => {
-    async function fetchDbUser() {
-      if (!user?.email) {
+    if (!user?.uid) {
+      setLoadingDb(false);
+      return;
+    }
+
+    const userDocRef = doc(db, 'users', user.uid);
+    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const fetchedUser = { id: docSnap.id, ...docSnap.data() } as ManagedUser;
+        setDbUser(fetchedUser);
+        localStorage.setItem('cached_db_user', JSON.stringify(fetchedUser));
+        if (fetchedUser.panelId) {
+          setActivePanelId(prev => prev === fetchedUser.panelId ? prev : (fetchedUser.panelId || 'default'));
+        }
         setLoadingDb(false);
-        return;
-      }
-      try {
-        const q = query(
-          collection(db, "users"), 
-          where("email", "==", user.email)
-        );
-        const querySnapshot = await getDocs(q);
-        if (!querySnapshot.empty) {
-          const docSnap = querySnapshot.docs[0];
-          const fetchedUser = { id: docSnap.id, ...docSnap.data() } as ManagedUser;
-          setDbUser(fetchedUser);
-          localStorage.setItem('cached_db_user', JSON.stringify(fetchedUser));
-          if (fetchedUser.panelId) {
-            setActivePanelId(fetchedUser.panelId);
-          }
-        } else {
-          // Sync authenticated user into Firestore automatically!
+      } else {
+        // Migration/Creation logic if user doesn't exist yet but is logged in
+        const autoSync = async () => {
           const defaultRole = isTargetAdmin ? 'Admin' : 'User';
           const defaultPerm = isTargetAdmin ? 'Full Access' : 'User Limited Access';
           const newDocData = {
@@ -425,18 +422,21 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
             phone: 'N/A (Check Registration)',
             createdAt: new Date().toISOString()
           };
-          await setDoc(doc(db, 'users', user.uid), newDocData);
-          setDbUser(newDocData as ManagedUser);
-          localStorage.setItem('cached_db_user', JSON.stringify(newDocData));
-        }
-      } catch (err) {
-        console.log("Error fetching user database profile in dashboard:", err);
-      } finally {
-        setLoadingDb(false);
+          try {
+            await setDoc(doc(db, 'users', user.uid), newDocData);
+          } catch(e) {
+            console.error("Auto-sync error:", e);
+          }
+        };
+        autoSync();
       }
-    }
-    fetchDbUser();
-  }, [user?.email]);
+    }, (error) => {
+      console.log("Error fetching user database profile in dashboard:", error);
+      setLoadingDb(false);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid]);
 
   const isUserAdmin = isTargetAdmin || (dbUser && (dbUser.role === 'Admin' || dbUser.role === 'admin'));
 
@@ -1548,6 +1548,8 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
                 campaign={roadmapCampaign} 
                 recentlyDrawnMonth={recentlyDrawnMonth} 
                 onBack={() => { setRoadmapCampaign(null); setRecentlyDrawnMonth(null); setActiveTab('campaigns'); }} 
+                onNavigateToHistory={() => setActiveTab('history')}
+                onNavigateToAchievements={() => setActiveTab('achievements')}
                 theme={theme}
                 availableUsers={availableUsers}
             />

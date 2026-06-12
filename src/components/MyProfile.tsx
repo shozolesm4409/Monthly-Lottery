@@ -91,7 +91,7 @@ export default function MyProfile({ theme, setActionError, setActionSuccess }: M
     fetchDbUser();
   }, [user?.uid, user?.email]);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -102,59 +102,99 @@ export default function MyProfile({ theme, setActionError, setActionSuccess }: M
 
     setUploadingImage(true);
     setActionError(null);
+    setActionSuccess(null);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
+    try {
+      // Step 1: Read the file as Data URL
+      const reader = new FileReader();
+      const imageData = await new Promise<string>((resolve, reject) => {
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // Step 2: Load into image for resizing
       const img = new Image();
-      img.onload = async () => {
-        const canvas = document.createElement('canvas');
-        const MAX_SIZE = 400; 
-        let width = img.width;
-        let height = img.height;
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = imageData;
+      });
 
-        if (width > height) {
-          if (width > MAX_SIZE) {
-            height *= MAX_SIZE / width;
-            width = MAX_SIZE;
-          }
-        } else {
-          if (height > MAX_SIZE) {
-            width *= MAX_SIZE / height;
-            height = MAX_SIZE;
-          }
+      // Step 3: Resize with Canvas
+      const canvas = document.createElement('canvas');
+      const MAX_SIZE = 400; // Standard profile size
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > MAX_SIZE) {
+          height *= MAX_SIZE / width;
+          width = MAX_SIZE;
         }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
+      } else {
+        if (height > MAX_SIZE) {
+          width *= MAX_SIZE / height;
+          height = MAX_SIZE;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(img, 0, 0, width, height);
 
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        setPhotoURL(dataUrl);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      
+      // Update local state immediately for instant feedback
+      setPhotoURL(dataUrl);
 
+      if (user) {
+        let finalUrl = dataUrl;
+        
         try {
-          if (user) {
-            // Update Auth Profile
-            await updateProfile(user, { photoURL: dataUrl });
-            // Update Firestore
-            await updateDoc(doc(db, 'users', user.uid), { photoURL: dataUrl });
-            
-            if (dbUser) {
-              setDbUser({ ...dbUser, photoURL: dataUrl });
-            }
-            setActionSuccess('Profile picture updated successfully.');
-          }
-        } catch (err: any) {
-          console.error(err);
-          setActionError('Failed to update profile picture: ' + err.message);
-        } finally {
-          setUploadingImage(false);
-          if (fileInputRef.current) fileInputRef.current.value = '';
+          // Attempt Storage Upload with a tight timeout to fallback to Data URI fast if needed
+          const storageRef = ref(storage, `profile_images/${user.uid}.jpg`);
+          
+          // Use a simple timeout race for the whole storage operation
+          const uploadTask = uploadString(storageRef, dataUrl, 'data_url');
+          
+          // Wait for upload or fallback
+          await Promise.race([
+            uploadTask,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+          ]);
+          
+          finalUrl = await getDownloadURL(storageRef);
+        } catch (storageErr) {
+          console.warn("Storage upload failed or timeout, using Data URI:", storageErr);
         }
-      };
-      img.src = result;
-    };
-    reader.readAsDataURL(file);
+
+        // UPDATE EVERYTHING
+        // 1. Auth Profile
+        try {
+          await updateProfile(user, { photoURL: finalUrl });
+        } catch (e) {
+          console.warn("Auth update failed (likely too long):", e);
+        }
+
+        // 2. Firestore Document (The core state)
+        // This is what the real-time listener in AdminDashboard picks up
+        await setDoc(doc(db, 'users', user.uid), { 
+          photoURL: finalUrl,
+          lastUpdated: new Date().toISOString()
+        }, { merge: true });
+        
+        setActionSuccess('Profile picture updated successfully.');
+        setPhotoURL(finalUrl); // Final sync
+      }
+    } catch (err: any) {
+      console.error("Profile image update error:", err);
+      setActionError('Upload failed: ' + (err.message || 'Unknown error'));
+      setPhotoURL(user?.photoURL || '');
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const handlePasswordChange = async (e: React.FormEvent) => {

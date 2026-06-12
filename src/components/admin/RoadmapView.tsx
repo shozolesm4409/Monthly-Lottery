@@ -7,11 +7,21 @@ interface RoadmapViewProps {
   campaign: LotteryCampaign | null;
   recentlyDrawnMonth?: number | null;
   onBack: () => void;
+  onNavigateToHistory?: () => void;
+  onNavigateToAchievements?: () => void;
   theme?: 'dark' | 'light';
   availableUsers?: ManagedUser[];
 }
 
-export default function RoadmapView({ campaign, recentlyDrawnMonth, onBack, theme, availableUsers = [] }: RoadmapViewProps) {
+export default function RoadmapView({ 
+  campaign, 
+  recentlyDrawnMonth, 
+  onBack, 
+  onNavigateToHistory,
+  onNavigateToAchievements,
+  theme, 
+  availableUsers = [] 
+}: RoadmapViewProps) {
   const [showReveal, setShowReveal] = useState(false);
   const [revealedWinnerName, setRevealedWinnerName] = useState('');
 
@@ -340,15 +350,21 @@ export default function RoadmapView({ campaign, recentlyDrawnMonth, onBack, them
 
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row items-center gap-4 mt-6 pt-4 border-t border-gray-200 dark:border-gray-800 mx-auto justify-center">
-        <button className={`flex items-center gap-2 px-6 py-3.5 rounded-full font-bold text-sm transition-all ${
-          isDark ? 'bg-[#161f36] text-white hover:bg-[#1f2947]' : 'bg-[#161f36] text-white shadow-xl shadow-[#161f36]/20'
-        }`}>
+        <button 
+          onClick={onNavigateToHistory}
+          className={`flex items-center gap-2 px-6 py-3.5 rounded-full font-bold text-sm transition-all ${
+            isDark ? 'bg-[#161f36] text-white hover:bg-[#1f2947]' : 'bg-[#161f36] text-white shadow-xl shadow-[#161f36]/20'
+          }`}
+        >
           <Trophy className="w-4 h-4 text-amber-400" />
           Check Winners List
         </button>
-        <button className={`flex items-center gap-2 px-6 py-3.5 rounded-full font-bold text-sm transition-all ${
-          isDark ? 'bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 border border-amber-500/30' : 'bg-[#ffecd1] text-[#b47120] hover:bg-[#ffe1ba] border border-[#f5dbb8]'
-        }`}>
+        <button 
+          onClick={onNavigateToAchievements}
+          className={`flex items-center gap-2 px-6 py-3.5 rounded-full font-bold text-sm transition-all ${
+            isDark ? 'bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 border border-amber-500/30' : 'bg-[#ffecd1] text-[#b47120] hover:bg-[#ffe1ba] border border-[#f5dbb8]'
+          }`}
+        >
           <Gift className="w-4 h-4" />
           View Prizes
         </button>
