@@ -1,9 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
-  signInWithEmailAndPassword 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  signOut
 } from 'firebase/auth';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { collection, query, where, getDocs, setDoc, doc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth, db, storage } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Mail, 
@@ -14,30 +18,90 @@ import {
   Sparkles, 
   AlertCircle,
   Sun,
-  Moon
+  Moon,
+  User,
+  Phone,
+  Upload,
+  CheckCircle2
 } from 'lucide-react';
 
 interface LoginUIProps {
   onSuccess?: () => void;
   theme?: 'dark' | 'light';
   toggleTheme?: () => void;
+  externalError?: string | null;
 }
 
-export default function LoginUI({ onSuccess, theme = 'dark', toggleTheme }: LoginUIProps) {
+export default function LoginUI({ onSuccess, theme = 'dark', toggleTheme, externalError }: LoginUIProps) {
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [image, setImage] = useState<File | null>(null);
+  
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(externalError || null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (externalError) {
+      setError(externalError);
+    }
+  }, [externalError]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    setSuccessMsg(null);
+
+    if (mode === 'signup') {
+      if (!fullName || !email || !password) {
+        setError('Please fill in all required fields.');
+        return;
+      }
+      setLoading(true);
+      try {
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        
+        await updateProfile(cred.user, { displayName: fullName });
+        
+        const userData = {
+          id: cred.user.uid,
+          name: fullName.trim(),
+          email: email.trim(),
+          password: password, // Explicitly storing password as requested by user
+          phone: '',
+          photoURL: '',
+          role: 'User',
+          permission: 'user',
+          status: 'Pending',
+          createdAt: new Date().toISOString()
+        };
+        
+        await setDoc(doc(db, 'users', cred.user.uid), userData);
+
+        setSuccessMsg('Registration successful! Your account is pending admin approval.');
+        setTimeout(() => {
+          onSuccess?.();
+        }, 500);
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'Error creating account.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (!email || !password) {
       setError('Please provide both email and password.');
       return;
     }
     setLoading(true);
-    setError(null);
 
     let resolvedEmail = email.trim();
 
@@ -116,11 +180,11 @@ export default function LoginUI({ onSuccess, theme = 'dark', toggleTheme }: Logi
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.4 }}
-        className={`w-full max-w-[400px] ${
+        className={`w-full ${mode === 'signup' ? 'max-w-[600px]' : 'max-w-[400px]'} ${
           theme === 'dark' 
             ? 'bg-[#0d0d0d] border border-[#222]' 
             : 'bg-white border border-gray-200 shadow-xl'
-        } rounded-2xl p-8 backdrop-blur-md relative z-10 flex flex-col`}
+        } rounded-2xl p-8 backdrop-blur-md relative z-10 flex flex-col transition-all duration-300`}
       >
         {/* Banner with Icon */}
         <div className="flex flex-col items-center justify-center mb-6 text-center">
@@ -139,7 +203,7 @@ export default function LoginUI({ onSuccess, theme = 'dark', toggleTheme }: Logi
           </p>
         </div>
 
-        {/* Error notification */}
+        {/* Messages */}
         <AnimatePresence>
           {error && (
             <motion.div 
@@ -152,66 +216,146 @@ export default function LoginUI({ onSuccess, theme = 'dark', toggleTheme }: Logi
               <span>{error}</span>
             </motion.div>
           )}
+          {successMsg && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-200 text-xs p-3.5 rounded-xl mb-5 flex items-start gap-2 overflow-hidden"
+            >
+              <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400" />
+              <span>{successMsg}</span>
+            </motion.div>
+          )}
         </AnimatePresence>
 
         {/* Auth form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className={`block text-xs font-semibold ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-widest mb-1.5 ml-1`}>
-              Email Address or User ID
-            </label>
-            <div className="relative">
-              <Mail className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 ${theme === 'dark' ? 'text-gray-650' : 'text-gray-400'}`} />
-              <input 
-                id="email-input"
-                type="text" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="user_123 or admin@money-lottery.app"
-                className={`w-full ${
-                  theme === 'dark' 
-                    ? 'bg-[#161616] border border-[#262626] text-white placeholder-gray-600 focus:border-amber-500/50 focus:ring-amber-500/35' 
-                    : 'bg-gray-50 border border-gray-200 text-gray-900 placeholder-gray-405 focus:border-amber-600/50 focus:ring-amber-600/35'
-                } rounded-xl pl-11 pr-4 py-3 text-sm transition-all`}
-                disabled={loading}
-              />
+          {mode === 'signup' && (
+            <div>
+              <label className={`block text-xs font-semibold ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-widest mb-1.5 ml-1`}>
+                Full Name
+              </label>
+              <div className="relative">
+                <User className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 ${theme === 'dark' ? 'text-gray-650' : 'text-gray-400'}`} />
+                <input 
+                  type="text" 
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="John Doe"
+                  className={`w-full ${
+                    theme === 'dark' 
+                      ? 'bg-[#161616] border border-[#262626] text-white placeholder-gray-600 focus:border-amber-500/50 focus:ring-amber-500/35' 
+                      : 'bg-gray-50 border border-gray-200 text-gray-900 placeholder-gray-405 focus:border-amber-600/50 focus:ring-amber-600/35'
+                  } rounded-xl pl-11 pr-4 py-3 text-sm transition-all`}
+                  disabled={loading}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className={(mode === 'signup' && false) ? "grid grid-cols-2 gap-4" : ""}>
+            <div>
+              <label className={`block text-xs font-semibold ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-widest mb-1.5 ml-1`}>
+                Email Address {mode === 'login' && 'or User ID'}
+              </label>
+              <div className="relative">
+                <Mail className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 ${theme === 'dark' ? 'text-gray-650' : 'text-gray-400'}`} />
+                <input 
+                  id="email-input"
+                  type="text" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder={mode === 'login' ? "user_123 or admin@money-lottery.app" : "name@example.com"}
+                  className={`w-full ${
+                    theme === 'dark' 
+                      ? 'bg-[#161616] border border-[#262626] text-white placeholder-gray-600 focus:border-amber-500/50 focus:ring-amber-500/35' 
+                      : 'bg-gray-50 border border-gray-200 text-gray-900 placeholder-gray-405 focus:border-amber-600/50 focus:ring-amber-600/35'
+                  } rounded-xl pl-11 pr-4 py-3 text-sm transition-all`}
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className={`block text-xs font-semibold ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-widest mb-1.5 ml-1`}>
+                Password
+              </label>
+              <div className="relative">
+                <Lock className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 ${theme === 'dark' ? 'text-gray-650' : 'text-gray-400'}`} />
+                <input 
+                  id="password-input"
+                  type={showPassword ? "text" : "password"} 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className={`w-full ${
+                    theme === 'dark' 
+                      ? 'bg-[#161616] border border-[#262626] text-white placeholder-gray-600 focus:border-amber-500/50 focus:ring-amber-500/35' 
+                      : 'bg-gray-50 border border-gray-200 text-gray-900 placeholder-gray-405 focus:border-amber-600/50 focus:ring-amber-600/35'
+                  } rounded-xl pl-11 pr-11 py-3 text-sm transition-all`}
+                  disabled={loading}
+                />
+                <button 
+                  id="toggle-password"
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className={`absolute right-3.5 top-1/2 -translate-y-1/2 p-1 ${
+                    theme === 'dark' 
+                      ? 'text-gray-500 hover:text-gray-300' 
+                      : 'text-gray-400 hover:text-gray-600'
+                  } transition-colors`}
+                  disabled={loading}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
           </div>
 
-          <div>
-            <label className={`block text-xs font-semibold ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-widest mb-1.5 ml-1`}>
-              Password
-            </label>
-            <div className="relative">
-              <Lock className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 ${theme === 'dark' ? 'text-gray-650' : 'text-gray-400'}`} />
-              <input 
-                id="password-input"
-                type={showPassword ? "text" : "password"} 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className={`w-full ${
-                  theme === 'dark' 
-                    ? 'bg-[#161616] border border-[#262626] text-white placeholder-gray-600 focus:border-amber-500/50 focus:ring-amber-500/35' 
-                    : 'bg-gray-50 border border-gray-200 text-gray-900 placeholder-gray-405 focus:border-amber-600/50 focus:ring-amber-600/35'
-                } rounded-xl pl-11 pr-11 py-3 text-sm transition-all`}
-                disabled={loading}
-              />
-              <button 
-                id="toggle-password"
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className={`absolute right-3.5 top-1/2 -translate-y-1/2 p-1 ${
-                  theme === 'dark' 
-                    ? 'text-gray-500 hover:text-gray-300' 
-                    : 'text-gray-400 hover:text-gray-600'
-                } transition-colors`}
-                disabled={loading}
+          {false && mode === 'signup' && (
+            <div>
+              <label className={`block text-xs font-semibold ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-widest mb-1.5 ml-1`}>
+                Profile Image (Optional)
+              </label>
+              <div 
+                className={`relative flex items-center gap-3 p-3 rounded-xl border-2 border-dashed ${
+                  theme === 'dark' ? 'border-[#262626] bg-[#161616]' : 'border-gray-200 bg-gray-50'
+                }`}
               >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+                {image ? (
+                  <div className="w-20 h-20 rounded-lg overflow-hidden shrink-0 border border-gray-200 dark:border-gray-800">
+                    <img 
+                      src={URL.createObjectURL(image)} 
+                      alt="Preview" 
+                      className="w-full h-full object-cover" 
+                    />
+                  </div>
+                ) : (
+                  <div className={`p-4 rounded-lg flex flex-col items-center justify-center gap-1 ${theme === 'dark' ? 'bg-[#222]' : 'bg-gray-100'} shrink-0`}>
+                    <Upload className="w-5 h-5 text-gray-400" />
+                  </div>
+                )}
+                <div className="flex-1 overflow-hidden">
+                  <p className="text-xs text-gray-400 truncate">
+                    {image ? image.name : 'Click to select image...'}
+                  </p>
+                </div>
+                <input 
+                  type="file" 
+                  ref={fileInputRef}
+                  accept="image/*"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setImage(e.target.files[0]);
+                    }
+                  }}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  disabled={loading}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <button
             id="auth-submit-btn"
@@ -227,12 +371,26 @@ export default function LoginUI({ onSuccess, theme = 'dark', toggleTheme }: Logi
               <div className={`w-4 h-4 border-2 ${theme === 'dark' ? 'border-black' : 'border-white'} border-t-transparent rounded-full animate-spin`}></div>
             ) : (
               <>
-                Authorize Dashboard
+                {mode === 'login' ? 'Authorize Dashboard' : 'Register Account'}
                 <ArrowRight className="w-4 h-4" />
               </>
             )}
           </button>
         </form>
+
+        <div className="mt-5 text-center">
+          <button
+            type="button"
+            onClick={() => {
+              setMode(mode === 'login' ? 'signup' : 'login');
+              setError(null);
+              setSuccessMsg(null);
+            }}
+            className={`text-xs font-semibold ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-black'} transition-colors`}
+          >
+            {mode === 'login' ? "Don't have an account? Sign Up" : "Already have an account? Log In"}
+          </button>
+        </div>
       </motion.div>
     </div>
   );

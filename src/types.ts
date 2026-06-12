@@ -72,7 +72,7 @@ export interface ManagedUser {
   password?: string;
   campus?: string;
   role: string;
-  status: 'Active' | 'Inactive';
+  status: 'Active' | 'Inactive' | 'Pending';
   permission: string;
   phone?: string;
   createdAt?: string;

@@ -30,6 +30,7 @@ export interface RolePermissionConfig {
   profile: boolean;
   campaigns: boolean;
   users: boolean;
+  approve: boolean;
   permissions: boolean;
   history: boolean;
   achievements: boolean;
@@ -43,6 +44,7 @@ const DEFAULT_PERMISSIONS: Record<string, Omit<RolePermissionConfig, 'id'>> = {
     profile: true,
     campaigns: false,
     users: false,
+    approve: false,
     permissions: false,
     history: true,
     achievements: true,
@@ -54,6 +56,7 @@ const DEFAULT_PERMISSIONS: Record<string, Omit<RolePermissionConfig, 'id'>> = {
     profile: true,
     campaigns: true,
     users: false,
+    approve: false,
     permissions: false,
     history: true,
     achievements: true,
@@ -65,6 +68,7 @@ const DEFAULT_PERMISSIONS: Record<string, Omit<RolePermissionConfig, 'id'>> = {
     profile: true,
     campaigns: true,
     users: true,
+    approve: false,
     permissions: false,
     history: true,
     achievements: true,
@@ -76,6 +80,7 @@ const DEFAULT_PERMISSIONS: Record<string, Omit<RolePermissionConfig, 'id'>> = {
     profile: true,
     campaigns: true,
     users: true,
+    approve: true,
     permissions: true,
     history: true,
     achievements: true,
@@ -185,6 +190,7 @@ export default function RolePermissions({ theme, activePanelName }: RolePermissi
     { key: 'achievements' as const, label: 'My Achievements', desc: 'Displays won draw records and rewards history.', icon: Trophy },
     { key: 'notifications' as const, label: 'Notifications', desc: 'Receive real-time alerts about draws and winnings.', icon: Bell },
     { key: 'users' as const, label: 'User Management', desc: 'View, edit and create authorized local system user profiles.', icon: Users },
+    { key: 'approve' as const, label: 'Approved User', desc: 'Review and approve newly registered user accounts.', icon: ShieldCheck },
     { key: 'permissions' as const, label: 'Role Permissions', desc: 'Modify menu visibility scopes and security controls.', icon: ShieldCheck },
     { key: 'history' as const, label: 'Draw History', desc: 'View complete details and logs of all drawn lottery rounds.', icon: Trophy },
     { key: 'panels' as const, label: 'Panel Management', desc: 'Allows full command setup and dynamic routing over custom dashboard panels.', icon: Layout },

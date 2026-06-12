@@ -66,7 +66,7 @@ interface AdminSidebarProps {
   theme: 'dark' | 'light';
   activeTab: string;
   setActiveTab: (tab: any) => void;
-  hasVisibility: (menuKey: 'dashboard' | 'profile' | 'history' | 'users' | 'permissions' | 'achievements' | 'notifications' | 'panels') => boolean;
+  hasVisibility: (menuKey: 'dashboard' | 'profile' | 'campaigns' | 'users' | 'approve' | 'history' | 'permissions' | 'achievements' | 'notifications' | 'panels') => boolean;
   user: any;
   handleSignOut: () => void;
   mobileSidebarOpen: boolean;
@@ -254,6 +254,20 @@ export default function AdminSidebar({
                 >
                   <Users className="w-4 h-4 shrink-0" />
                   User Management
+                </button>
+              )}
+
+              {hasVisibility('approve') && (
+                <button
+                  onClick={() => setActiveTab('approve')}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all ${
+                    activeTab === 'approve'
+                      ? 'bg-amber-500 text-black shadow-md shadow-amber-500/10'
+                      : theme === 'dark' ? 'hover:bg-[#161616] text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-900 border-transparent hover:border-gray-200'
+                  }`}
+                >
+                  <ShieldCheck className="w-4 h-4 shrink-0" />
+                  Approved User
                 </button>
               )}
 
@@ -542,6 +556,18 @@ export default function AdminSidebar({
                       >
                         <Users className="w-4 h-4 shrink-0" />
                         User Management
+                      </button>
+                    )}
+
+                    {hasVisibility('approve') && (
+                      <button
+                        onClick={() => { setActiveTab('approve'); setMobileSidebarOpen(false); }}
+                        className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all ${
+                          activeTab === 'approve' ? 'bg-amber-500 text-black' : theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                        }`}
+                      >
+                        <ShieldCheck className="w-4 h-4 shrink-0" />
+                        Approved User
                       </button>
                     )}
 

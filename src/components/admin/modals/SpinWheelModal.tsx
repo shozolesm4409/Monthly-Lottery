@@ -192,11 +192,19 @@ export default function SpinWheelModal({
     // Wait for the rotation transition to complete
     setTimeout(() => {
       setIsSpinning(false);
+      
+      // Update candidates immediately so the board reflects the removal
+      setCandidates(prev => prev.filter(u => u.id !== selectedWinner.id));
+      setRotation(0); // Reset rotation to 0 for the new wheel layout
+
       setCurrentWinner(selectedWinner);
       setShowCelebration(true);
 
-      // Play sound if possible in future or simple logs
-      
+      // Successfully drawn - auto-clear the celebration after a short delay so the next spin can start
+      setTimeout(() => {
+        handleNextSpinSetup();
+      }, 3500);
+
       // Add to session winners
       setSessionWinners(prev => [
         ...prev,
@@ -210,13 +218,8 @@ export default function SpinWheelModal({
     }, 4000); // matches the transition-duration
   };
 
-  // Next spin setup: remove current winner from slice list to hide them
+  // Next spin setup: clear current winner UI state
   const handleNextSpinSetup = () => {
-    if (!currentWinner) return;
-
-    // Filter out the winner from active candidates
-    const rem = candidates.filter(u => u.id !== currentWinner.id);
-    setCandidates(rem);
     setCurrentWinner(null);
     setShowCelebration(false);
   };
@@ -380,7 +383,7 @@ export default function SpinWheelModal({
                 <button
                   type="button"
                   onClick={handleSpinClick}
-                  disabled={isSpinning || candidates.length === 0 || remainingVotesToDraw === 0}
+                  disabled={isSpinning || candidates.length === 0 || remainingVotesToDraw === 0 || showCelebration}
                   className="w-14 h-14 md:w-16 md:h-16 bg-gradient-to-tr from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 disabled:from-zinc-650 disabled:to-zinc-550 border-4 border-emerald-950 dark:border-neutral-900 text-neutral-950 font-black tracking-wider shadow-2xl rounded-full flex flex-col items-center justify-center transition-all transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:pointer-events-none cursor-pointer"
                 >
                   <span className="text-[9px] uppercase font-mono tracking-widest text-[#000] opacity-80 leading-none">Tap</span>
@@ -501,16 +504,7 @@ export default function SpinWheelModal({
                     congratulation!
                   </p>
 
-                  {remainingVotesToDraw > 0 ? (
-                    <button
-                      type="button"
-                      onClick={handleNextSpinSetup}
-                      className="mt-2.5 w-full py-1.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 rounded-lg font-bold font-sans text-xs flex items-center justify-center gap-1 cursor-pointer"
-                    >
-                      <RefreshCw className="w-3 h-3 animate-spin" strokeWidth="3" />
-                      Set Next Spin
-                    </button>
-                  ) : (
+                  {remainingVotesToDraw === 0 && (
                     <div className="text-[10px] text-emerald-500 font-bold mt-1.5">
                        All targets mapped!
                     </div>

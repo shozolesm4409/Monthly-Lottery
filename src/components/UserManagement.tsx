@@ -30,8 +30,10 @@ import {
   EyeOff,
   Search,
   Shield,
-  AlertTriangle
+  AlertTriangle,
+  ExternalLink
 } from 'lucide-react';
+import Swal from 'sweetalert2';
 
 interface UserManagementProps {
   theme: 'dark' | 'light';
@@ -40,6 +42,7 @@ interface UserManagementProps {
   panels?: DashboardPanel[];
   activePanelId?: string;
   isSuperAdmin?: boolean;
+  viewMode?: 'users' | 'approve';
 }
 
 export default function UserManagement({ 
@@ -48,8 +51,10 @@ export default function UserManagement({
   setActionSuccess,
   panels = [],
   activePanelId = 'default',
-  isSuperAdmin = false
+  isSuperAdmin = false,
+  viewMode = 'users'
 }: UserManagementProps) {
+
   const [users, setUsers] = useState<ManagedUser[]>(() => {
     const cached = localStorage.getItem('cached_users_mgmt');
     try {
@@ -73,7 +78,7 @@ export default function UserManagement({
   const [formEmail, setFormEmail] = useState('');
   const [formPassword, setFormPassword] = useState('');
   const [formRole, setFormRole] = useState('Admin');
-  const [formStatus, setFormStatus] = useState<'Active' | 'Inactive'>('Active');
+  const [formStatus, setFormStatus] = useState<'Active' | 'Inactive' | 'Pending'>('Active');
   const [formPhone, setFormPhone] = useState('');
   const [formPanelId, setFormPanelId] = useState('default');
 
@@ -83,28 +88,30 @@ export default function UserManagement({
 
   // Subscribe to real-time updates from Firestore users collection
   useEffect(() => {
-    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const uList: ManagedUser[] = [];
-      snapshot.forEach((docSnap) => {
-        uList.push({ id: docSnap.id, ...docSnap.data() } as ManagedUser);
+    const qUsers = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+
+    const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
+      const allUsers = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: doc.id, 
+          ...data,
+          // Ensure these fields exist at least as empty strings for display
+          photoURL: data.photoURL || '',
+          phone: data.phone || '',
+          password: data.password || ''
+        } as ManagedUser;
       });
-      setUsers(uList);
-      localStorage.setItem('cached_users_mgmt', JSON.stringify(uList));
+      setUsers(allUsers);
+      localStorage.setItem('cached_users_mgmt', JSON.stringify(allUsers));
       setLoading(false);
-      setConfigNotice(null);
     }, (error) => {
-      // Safe logging without console.error (which triggers the test suite's crash detector)
-      console.log('User status notice:', error.message);
+      console.error("User management subscription error:", error);
       setLoading(false);
-      if (error.message.includes('permission') || error.message.includes('Permission')) {
-        setConfigNotice('Access Note: Cloud Firestore security rules need configuration to read the "users" collection.');
-      } else {
-        setActionError("User data subscription is currently unavailable. Please check Firestore connectivity.");
-      }
     });
-    return () => unsubscribe();
-  }, [setActionError]);
+
+    return () => unsubscribeUsers();
+  }, []);
 
   const handleOpenAddModal = () => {
     setEditingUser(null);
@@ -214,29 +221,94 @@ export default function UserManagement({
   };
 
   const handleDeleteUser = async (user: ManagedUser) => {
-    if (!window.confirm(`Are you sure you want to delete user "${user.name}"?`)) {
-      return;
+    const result = await Swal.fire({
+      title: 'Are you sure?',
+      text: `Do you really want to delete user "${user.name}"? This action cannot be undone.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#f59e0b',
+      cancelButtonColor: '#1a1a1a',
+      confirmButtonText: 'Yes, delete it!',
+      background: theme === 'dark' ? '#0d0d0d' : '#fff',
+      color: theme === 'dark' ? '#fff' : '#000',
+      customClass: {
+        popup: 'rounded-2xl border border-gray-800'
+      }
+    });
+
+    if (result.isConfirmed) {
+      setProcessing(true);
+      setActionError(null);
+      setActionSuccess(null);
+      try {
+        await deleteDoc(doc(db, 'users', user.id));
+        // Also try deleting from pending in case
+        try { await deleteDoc(doc(db, 'pending_registrations', user.id)); } catch {}
+        
+        Swal.fire({
+          title: 'Deleted!',
+          text: 'User has been removed from the system.',
+          icon: 'success',
+          timer: 2000,
+          showConfirmButton: false,
+          background: theme === 'dark' ? '#0d0d0d' : '#fff',
+          color: theme === 'dark' ? '#fff' : '#000',
+        });
+        setActionSuccess(`User "${user.name}" deleted successfully.`);
+      } catch (err: any) {
+        console.log('Delete user error:', err.message);
+        setActionError(`Could not delete user: ${err.message}`);
+        Swal.fire('Error!', err.message, 'error');
+      } finally {
+        setProcessing(false);
+      }
     }
+  };
+
+  const handleApproveUser = async (user: ManagedUser) => {
     setProcessing(true);
     setActionError(null);
     setActionSuccess(null);
     try {
-      await deleteDoc(doc(db, 'users', user.id));
-      setActionSuccess(`User "${user.name}" deleted successfully.`);
-    } catch (err: any) {
-      console.log('Delete user error:', err.message);
-      setActionError(`Could not delete user: ${err.message}`);
+      // Update status to Active in the users collection
+      await updateDoc(doc(db, 'users', user.id), { status: 'Active' });
+      setActionSuccess(`User "${user.name}" approved successfully.`);
+    } catch (e: any) {
+      setActionError(`Error approving user: ${e.message}`);
     } finally {
       setProcessing(false);
     }
   };
 
+  const handleUpdateUserField = async (userId: string, field: string, value: string) => {
+    setProcessing(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      await updateDoc(doc(db, 'users', userId), { [field]: value });
+      setActionSuccess(`User updated successfully.`);
+    } catch (err: any) {
+      console.error("Update field error:", err);
+      setActionError(`Update failed: ${err.message}`);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // KPI count statistics
+  const currentPanelUsers = users.filter(u => {
+    if (!u.status || u.status === 'Pending' || u.status === 'pending') return true;
+    const isSuperAdminUser = (u.role || '').toLowerCase() === 'super admin' || (u.role || '').toLowerCase() === 'superadmin';
+    return isSuperAdminUser || (u.panelId || 'default') === (activePanelId || 'default');
+  });
+
+
   // Filtered users search box
-  const filteredUsers = users.filter(user => {
-    const userPanel = user.panelId || 'default';
-    const activePanel = activePanelId || 'default';
-    const isSuperAdmin = (user.role || '').toLowerCase() === 'super admin' || (user.role || '').toLowerCase() === 'superadmin';
-    if (!isSuperAdmin && userPanel !== activePanel) return false;
+  const filteredUsers = currentPanelUsers.filter(user => {
+    // Tab filter
+    const status = user.status ? user.status.trim() : '';
+    if (viewMode === 'users' && (!status || status === 'Pending' || status === 'pending')) return false;
+    if (viewMode === 'approve' && (status && status !== 'Pending' && status !== 'pending')) return false;
 
     const term = searchTerm.toLowerCase();
     return (
@@ -247,15 +319,11 @@ export default function UserManagement({
     );
   });
 
-  // KPI count statistics
-  const currentPanelUsers = users.filter(u => {
-    const isSuperAdmin = (u.role || '').toLowerCase() === 'super admin' || (u.role || '').toLowerCase() === 'superadmin';
-    return isSuperAdmin || (u.panelId || 'default') === (activePanelId || 'default');
-  });
-  const totalUsersCount = currentPanelUsers.length;
-  const activeUsersCount = currentPanelUsers.filter(u => u.status === 'Active').length;
-  const inactiveUsersCount = currentPanelUsers.filter(u => u.status === 'Inactive').length;
-  const adminUsersCount = currentPanelUsers.filter(u => u.role === 'Admin' || u.role === 'Super Admin').length;
+  const totalUsersCount = currentPanelUsers.filter(u => u.status && u.status !== 'Pending' && u.status !== 'pending').length;
+  const activeUsersCount = currentPanelUsers.filter(u => u.status === 'Active' || u.status === 'active').length;
+  const inactiveUsersCount = currentPanelUsers.filter(u => u.status === 'Inactive' || u.status === 'inactive').length;
+  const pendingUsersCount = currentPanelUsers.filter(u => !u.status || u.status === 'Pending' || u.status === 'pending').length;
+  const adminUsersCount = currentPanelUsers.filter(u => (u.role === 'Admin' || u.role === 'Super Admin') && u.status && u.status !== 'Pending' && u.status !== 'pending').length;
 
   return (
     <div className="space-y-6 font-sans">
@@ -310,12 +378,12 @@ export default function UserManagement({
 
         <div className={`${theme === 'dark' ? 'bg-[#0d0d0d] border-[#1a1a1a]' : 'bg-white border-gray-200 shadow-sm'} border p-5 rounded-2xl flex items-center justify-between`}>
           <div>
-            <p className={`text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'} font-mono uppercase tracking-wider`}>Total Admins</p>
-            <h3 className="text-2xl font-bold tracking-tight text-indigo-500 mt-1">{adminUsersCount}</h3>
-            <p className="text-[10px] text-gray-400 font-mono mt-0.5">Full Administrators</p>
+            <p className={`text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'} font-mono uppercase tracking-wider`}>Pending Users</p>
+            <h3 className="text-2xl font-bold tracking-tight text-amber-500 mt-1">{pendingUsersCount}</h3>
+            <p className="text-[10px] text-gray-400 font-mono mt-0.5">Awaiting Approval</p>
           </div>
-          <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#161616] border-[#262626] text-indigo-500' : 'bg-indigo-50 text-indigo-600 border-indigo-200'}`}>
-            <ShieldCheck className="w-6 h-6" />
+          <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#161616] border-[#262626] text-amber-500' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>
+            <AlertTriangle className="w-6 h-6" />
           </div>
         </div>
       </div>
@@ -325,40 +393,48 @@ export default function UserManagement({
         <div>
           <div className="flex items-center gap-2">
             <h3 className={`text-lg font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'} tracking-tight`}>
-              User Management Panel
+              {viewMode === 'approve' ? 'Pending Approval Requests' : 'User Management Panel'}
             </h3>
-            <span className="text-[9px] font-mono uppercase tracking-wider py-0.5 px-2 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-full font-extrabold animate-pulse">
-              {panels.find(p => p.id === activePanelId)?.name || 'Main Panel'}
-            </span>
+            {viewMode !== 'approve' && (
+              <span className="text-[9px] font-mono uppercase tracking-wider py-0.5 px-2 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-full font-extrabold animate-pulse">
+                {panels.find(p => p.id === activePanelId)?.name || 'Main Panel'}
+              </span>
+            )}
           </div>
           <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} mt-0.5`}>
-            View, add, edit, or delete active administrators and access profiles in real-time under the active panel
+            {viewMode === 'approve' 
+              ? 'Review pending registrations and assign them to an active system panel.'
+              : 'View, add, edit, or delete active administrators and access profiles in real-time under the active panel'}
           </p>
         </div>
-        <button
-          id="add-user-btn"
-          onClick={handleOpenAddModal}
-          className="flex items-center justify-center gap-1.5 px-4.5 py-3 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-black rounded-xl text-xs font-bold cursor-pointer shadow-lg shadow-amber-500/10 transition-all font-sans shrink-0 uppercase tracking-wide"
-        >
-          <Plus className="w-4 h-4" />
-          Add User
-        </button>
+        {viewMode !== 'approve' && (
+          <button
+            id="add-user-btn"
+            onClick={handleOpenAddModal}
+            className="flex items-center justify-center gap-1.5 px-4.5 py-3 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-black rounded-xl text-xs font-bold cursor-pointer shadow-lg shadow-amber-500/10 transition-all font-sans shrink-0 uppercase tracking-wide"
+          >
+            <Plus className="w-4 h-4" />
+            Add User
+          </button>
+        )}
       </div>
 
-      {/* Search box filters */}
-      <div className="relative">
-        <Search className={`absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`} />
-        <input
-          type="text"
-          placeholder="Search users by name, email, role, or phone..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className={`w-full ${
-            theme === 'dark' 
-              ? 'bg-[#0d0d0d] border-[#1a1a1a] text-white placeholder-gray-600 focus:border-amber-500/50' 
-              : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:border-amber-500/50 shadow-xs'
-          } rounded-xl pl-11 pr-4 py-3 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500/35 transition-all`}
-        />
+      {/* Search */}
+      <div className="flex flex-col sm:flex-row gap-4 items-center">
+        <div className="relative w-full">
+          <Search className={`absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`} />
+          <input
+            type="text"
+            placeholder="Search users by name, email, role, or phone..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className={`w-full ${
+              theme === 'dark' 
+                ? 'bg-[#0d0d0d] border-[#1a1a1a] text-white placeholder-gray-600 focus:border-amber-500/50' 
+                : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:border-amber-500/50 shadow-xs'
+            } rounded-xl pl-11 pr-4 py-3 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500/35 transition-all outline-none`}
+          />
+        </div>
       </div>
 
       {/* 3. Manage User Table */}
@@ -377,12 +453,13 @@ export default function UserManagement({
             <thead>
               <tr className={`${theme === 'dark' ? 'bg-[#060606] text-gray-400 border-b border-[#1a1a1a]' : 'bg-gray-50 text-gray-500 border-b border-gray-200'} text-xs font-mono uppercase tracking-wider`}>
                 <th className="py-1 px-1.5 text-center font-bold">SL</th>
+                <th className="py-1 px-1.5 text-center font-bold">Photo</th>
                 <th className="py-1 px-1.5 text-left">Name</th>
                 <th className="py-1 px-1.5 text-left">Email</th>
                 <th className="py-1 px-1.5 text-left">Password</th>
                 <th className="py-1 px-1.5 text-left">Role</th>
                 <th className="py-1 px-1.5 text-center">Status</th>
-                <th className="py-1 px-1.5 text-left">Active Panel</th>
+                <th className="py-1 px-1.5 text-left">Panel</th>
                 <th className="py-1 px-1.5 text-left">Phone Number</th>
                 <th className="py-1 px-1.5 text-center">Actions</th>
               </tr>
@@ -392,6 +469,17 @@ export default function UserManagement({
                 <tr key={user.id} className={`${theme === 'dark' ? 'hover:bg-[#161616]/40' : 'hover:bg-gray-50/70'} transition-all`}>
                   <td className="py-0.5 px-1.5 text-center font-mono font-medium text-gray-550">
                     {idx + 1}
+                  </td>
+                  <td className="py-0.5 px-1.5">
+                    <div className="flex items-center justify-center">
+                      {user.photoURL ? (
+                        <img src={user.photoURL} alt="" className="w-8 h-8 rounded-full object-cover border border-amber-500/30" />
+                      ) : (
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${theme === 'dark' ? 'bg-[#161616] text-gray-500' : 'bg-gray-100 text-gray-400'} border border-dashed border-gray-500/30 font-mono text-[10px]`}>
+                          N/A
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td className="py-0.5 px-1.5">
                     <div className="font-semibold text-amber-500 flex items-center gap-1.5">
@@ -431,36 +519,87 @@ export default function UserManagement({
                     </span>
                   </td>
                   <td className="py-0.5 px-1.5 text-center">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                      user.status === 'Active' 
-                        ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
-                        : 'bg-rose-500/10 text-rose-500 border-rose-500/20'
-                    }`}>
-                      <span className={`w-1 h-1 rounded-full ${user.status === 'Active' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
-                      {user.status || 'Active'}
-                    </span>
+                    {viewMode === 'approve' ? (
+                      <select
+                        value={user.status || 'Pending'}
+                        onChange={(e) => handleUpdateUserField(user.id, 'status', e.target.value)}
+                        className={`text-[10px] font-bold border rounded-full px-2 py-0.5 outline-none cursor-pointer transition-all ${
+                          user.status === 'Active' 
+                            ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
+                            : user.status === 'Pending'
+                            ? 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                            : 'bg-rose-500/10 text-rose-500 border-rose-500/20'
+                        }`}
+                      >
+                        <option value="Active">Active</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Inactive">Inactive</option>
+                      </select>
+                    ) : (
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                        user.status === 'Active' 
+                          ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
+                          : user.status === 'Pending'
+                          ? 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                          : 'bg-rose-500/10 text-rose-500 border-rose-500/20'
+                      }`}>
+                        <span className={`w-1 h-1 rounded-full ${user.status === 'Active' ? 'bg-emerald-500' : user.status === 'Pending' ? 'bg-amber-500' : 'bg-rose-500'}`}></span>
+                        {user.status || 'Active'}
+                      </span>
+                    )}
                   </td>
                   <td className="py-0.5 px-1.5">
-                    <span className="font-semibold text-amber-500 font-mono text-xs">
-                      {panels.find(p => p.id === (user.panelId || 'default'))?.name || 'Main Panel'}
-                    </span>
+                    {viewMode === 'approve' ? (
+                      <select
+                        value={user.panelId || 'default'}
+                        onChange={(e) => handleUpdateUserField(user.id, 'panelId', e.target.value)}
+                        className={`w-full py-1 text-[10px] font-mono font-bold bg-transparent border-none focus:ring-0 ${theme === 'dark' ? 'text-amber-500' : 'text-amber-600'} cursor-pointer`}
+                      >
+                        {panels.length > 0 ? (
+                          panels.map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))
+                        ) : (
+                          <option value="default">Main Panel</option>
+                        )}
+                      </select>
+                    ) : (
+                      <span className={`font-semibold font-mono text-xs ${theme === 'dark' ? 'text-amber-500' : 'text-amber-600'}`}>
+                        {panels.find(p => p.id === (user.panelId || 'default'))?.name || 'Main Panel'}
+                      </span>
+                    )}
                   </td>
                   <td className="py-0.5 px-1.5 font-mono text-xs text-gray-500">
                     {user.phone || 'N/A'}
                   </td>
                   <td className="py-0.5 px-1.5">
                     <div className="flex items-center justify-center gap-1.5">
-                      <button
-                        onClick={() => handleOpenEditModal(user)}
-                        className={`p-1.5 rounded-lg border ${
-                          theme === 'dark' 
-                            ? 'bg-[#161616] border-[#222] hover:bg-amber-500/15 text-amber-505' 
-                            : 'bg-white border-gray-200 hover:bg-amber-50 text-amber-600 shadow-sm'
-                        } transition-colors cursor-pointer`}
-                        title="Edit user"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
+                      {viewMode === 'approve' && (
+                        <button
+                          onClick={() => handleApproveUser(user)}
+                          className={`p-1.5 rounded-lg border ${
+                            theme === 'dark' 
+                              ? 'bg-[#161616] border-[#222] hover:bg-emerald-500/15 text-emerald-505' 
+                              : 'bg-white border-gray-200 hover:bg-emerald-50 text-emerald-600 shadow-sm'
+                          } transition-colors cursor-pointer`}
+                          title="Approve user"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {viewMode !== 'approve' && (
+                        <button
+                          onClick={() => handleOpenEditModal(user)}
+                          className={`p-1.5 rounded-lg border ${
+                            theme === 'dark' 
+                              ? 'bg-[#161616] border-[#222] hover:bg-amber-500/15 text-amber-505' 
+                              : 'bg-white border-gray-200 hover:bg-amber-50 text-amber-600 shadow-sm'
+                          } transition-colors cursor-pointer`}
+                          title="Edit user"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDeleteUser(user)}
                         className={`p-1.5 rounded-lg border ${
@@ -590,13 +729,14 @@ export default function UserManagement({
                     <label className="block text-[11px] font-semibold text-gray-500 mb-1">System Status</label>
                     <select
                       value={formStatus}
-                      onChange={(e) => setFormStatus(e.target.value as 'Active' | 'Inactive')}
+                      onChange={(e) => setFormStatus(e.target.value as 'Active' | 'Inactive' | 'Pending')}
                       className={`w-full ${
                         theme === 'dark' ? 'bg-[#161616] border-[#262626] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
                       } border rounded-xl px-3.5 py-3 focus:outline-none focus:ring-1 focus:ring-amber-500`}
                     >
                       <option value="Active">Active</option>
                       <option value="Inactive">Inactive</option>
+                      <option value="Pending">Pending</option>
                     </select>
                   </div>
                 </div>

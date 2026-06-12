@@ -45,13 +45,15 @@
         "name": { "type": "string", "description": "User display name" },
         "email": { "type": "string", "format": "email", "description": "User login/auth email" },
         "password": { "type": "string", "description": "User verification hash or trace parameter" },
+        "phone": { "type": "string", "description": "User contact phone number" },
+        "photoURL": { "type": "string", "description": "URL to user profile picture" },
         "campus": { "type": "string", "description": "Assigned geographical or academic campus" },
-        "role": { "type": "string", "enum": ["Admin", "Moderator", "Staff"], "description": "Assigned organizational role" },
-        "status": { "type": "string", "enum": ["Active", "Inactive"], "description": "Sign-in or operational activity status" },
+        "role": { "type": "string", "enum": ["Super Admin", "Admin", "Editor", "User"], "description": "Assigned organizational role" },
+        "status": { "type": "string", "enum": ["Active", "Inactive", "Pending"], "description": "Sign-in or operational activity status" },
         "permission": { "type": "string", "description": "Explicit capabilities or access permissions description string" },
         "createdAt": { "type": "string", "format": "date-time", "description": "User profile creation date" }
       },
-      "required": ["name", "email", "campus", "role", "status", "permission"]
+      "required": ["name", "email", "role", "status"]
     },
     "RolePermissionConfig": {
       "title": "RolePermissionConfig",

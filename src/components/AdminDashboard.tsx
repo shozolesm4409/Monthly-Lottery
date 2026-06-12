@@ -167,7 +167,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
   const [deleteCampaign, setDeleteCampaign] = useState<LotteryCampaign | null>(null);
 
   // Layout and Sidebar active view
-  const [activeTab, setActiveTab] = useState<'campaigns' | 'users' | 'tickets' | 'profile' | 'permissions' | 'all_campaigns' | 'roadmap' | 'history' | 'spin_wheel' | 'achievements' | 'notifications'>('campaigns');
+  const [activeTab, setActiveTab] = useState<'campaigns' | 'users' | 'approve' | 'tickets' | 'profile' | 'permissions' | 'all_campaigns' | 'roadmap' | 'history' | 'spin_wheel' | 'achievements' | 'notifications'>('campaigns');
   const [recentlyDrawnMonth, setRecentlyDrawnMonth] = useState<number | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showSpinWheelModal, setShowSpinWheelModal] = useState(false);
@@ -369,7 +369,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
         : 'user'));
 
   // Visibility status system helper
-  const hasVisibility = (menuKey: 'dashboard' | 'profile' | 'campaigns' | 'users' | 'permissions' | 'history' | 'achievements' | 'notifications' | 'panels') => {
+  const hasVisibility = (menuKey: 'dashboard' | 'profile' | 'campaigns' | 'users' | 'approve' | 'permissions' | 'history' | 'achievements' | 'notifications' | 'panels') => {
     if (isTargetAdmin) return true;
     
     const activePermConfig = rolePermissions[resolvedRole];
@@ -379,10 +379,10 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
     
     // Default fallback hardcoded list if database isn't synced
     const fallbacks: Record<string, Record<string, boolean>> = {
-      user: { dashboard: true, profile: true, campaigns: false, users: false, permissions: false, history: true, achievements: true, notifications: true, panels: false },
-      editor: { dashboard: true, profile: true, campaigns: true, users: false, permissions: false, history: true, achievements: true, notifications: true, panels: false },
-      admin: { dashboard: true, profile: true, campaigns: true, users: true, permissions: false, history: true, achievements: true, notifications: true, panels: true },
-      superadmin: { dashboard: true, profile: true, campaigns: true, users: true, permissions: true, history: true, achievements: true, notifications: true, panels: true }
+      user: { dashboard: true, profile: true, campaigns: false, users: false, approve: false, permissions: false, history: true, achievements: true, notifications: true, panels: false },
+      editor: { dashboard: true, profile: true, campaigns: true, users: false, approve: false, permissions: false, history: true, achievements: true, notifications: true, panels: false },
+      admin: { dashboard: true, profile: true, campaigns: true, users: true, approve: false, permissions: false, history: true, achievements: true, notifications: true, panels: true },
+      superadmin: { dashboard: true, profile: true, campaigns: true, users: true, approve: true, permissions: true, history: true, achievements: true, notifications: true, panels: true }
     };
     return fallbacks[resolvedRole]?.[menuKey] ?? false;
   };
@@ -416,11 +416,13 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
             id: user.uid,
             name: user.displayName || user.email?.split('@')[0] || 'Staff User',
             email: user.email || '',
-            password: 'N/A (Auth Sync)',
-            campus: 'Dhaka Main Campus',
+            password: 'N/A (Registration Required)',
+            campus: 'Main Hub',
             role: defaultRole,
-            status: 'Active',
+            status: 'Pending',
             permission: defaultPerm,
+            photoURL: user.photoURL || '',
+            phone: 'N/A (Check Registration)',
             createdAt: new Date().toISOString()
           };
           await setDoc(doc(db, 'users', user.uid), newDocData);
@@ -1036,6 +1038,44 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
     );
   };
 
+  if (dbUser && dbUser.status === 'Pending') {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${theme === 'dark' ? 'bg-[#050505] text-[#e0e0e0]' : 'bg-gray-50 text-gray-800'} p-4 transition-colors duration-300`}>
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className={`w-full max-w-md ${theme === 'dark' ? 'bg-[#0a0a0a] border-[#1a1a1a]' : 'bg-white border-gray-200'} border rounded-3xl p-8 text-center shadow-2xl relative overflow-hidden`}
+        >
+          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+          <div className="absolute bottom-0 left-0 w-32 h-32 bg-yellow-500/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
+          
+          <div className="relative z-10 flex flex-col items-center">
+            <div className={`w-20 h-20 rounded-full mb-6 flex items-center justify-center ${theme === 'dark' ? 'bg-[#161616] border border-[#262626]' : 'bg-gray-50 border border-gray-100'}`}>
+              <ShieldCheck className={`w-10 h-10 ${theme === 'dark' ? 'text-amber-500' : 'text-amber-600'}`} />
+            </div>
+            
+            <h1 className="text-2xl font-bold font-display mb-3 tracking-tight">Pending Approval</h1>
+            
+            <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} mb-8 leading-relaxed`}>
+              Your account is currently under review by an administrator. You will gain access to the dashboard once your profile has been approved.
+            </p>
+
+            <button
+              onClick={handleSignOut}
+              className={`w-full py-3 px-4 rounded-xl font-bold text-sm transition-all ${
+                theme === 'dark' 
+                  ? 'bg-[#161616] text-white hover:bg-[#222] border border-[#262626]' 
+                  : 'bg-white text-gray-900 hover:bg-gray-50 border border-gray-200 shadow-sm'
+              }`}
+            >
+              Sign Out
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className={`h-screen max-h-screen overflow-hidden ${theme === 'dark' ? 'bg-[#050505] text-[#e0e0e0]' : 'bg-gray-50 text-gray-800'} flex font-sans select-none transition-colors duration-300 relative`}>
       
@@ -1077,6 +1117,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
               <h2 className={`text-base font-bold tracking-tight ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                 {activeTab === 'campaigns' && 'Campaign Control Board'}
                 {activeTab === 'users' && 'User Management'}
+                {activeTab === 'approve' && 'Pending Approval Requests'}
                 {activeTab === 'panels' && 'Panel Architecture'}
                 {activeTab === 'all_campaigns' && 'Lottery Campaigns Management'}
                 {activeTab === 'profile' && 'My Profile Settings'}
@@ -1087,6 +1128,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
               <p className={`text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'} hidden sm:block font-sans`}>
                 {activeTab === 'campaigns' && 'Activate lottery campaigns, run dynamic draws, and review parameters'}
                 {activeTab === 'users' && 'Manage system administration accounts, campus operators, and roles'}
+                {activeTab === 'approve' && 'Review and approve newly registered user accounts'}
                 {activeTab === 'panels' && 'Isolate layouts, edit titles, and command custom dashboard panels'}
                 {activeTab === 'profile' && 'Manage your administrator details, display settings and security settings'}
                 {activeTab === 'permissions' && 'Configure custom access rules, feature filters and administrator visibility levels'}
@@ -1256,6 +1298,22 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
               panels={panels}
               activePanelId={activePanelId}
               isSuperAdmin={resolvedRole === 'superadmin'}
+              viewMode="users"
+            />
+          </div>
+        )}
+
+        {/* 2B. APPROVED USER TAB */}
+        {activeTab === 'approve' && (
+          <div className="p-[2px]">
+            <UserManagement 
+              setActionError={setActionError}
+              setActionSuccess={setActionSuccess}
+              theme={theme}
+              panels={panels}
+              activePanelId={activePanelId}
+              isSuperAdmin={resolvedRole === 'superadmin'}
+              viewMode="approve"
             />
           </div>
         )}

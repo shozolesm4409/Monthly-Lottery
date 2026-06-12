@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth } from './firebase';
+import { onAuthStateChanged, User, signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from './firebase';
 import LoginUI from './components/LoginUI';
 import AdminDashboard from './components/AdminDashboard';
 import { Sparkles } from 'lucide-react';
@@ -8,6 +9,7 @@ import { Sparkles } from 'lucide-react';
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pendingError, setPendingError] = useState<string | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('theme') as 'dark' | 'light') || 'dark';
@@ -23,8 +25,13 @@ export default function App() {
 
   useEffect(() => {
     // Dynamically listen for authentication changes
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        setPendingError(null);
+      } else {
+        setUser(null);
+      }
       setLoading(false);
     });
 
@@ -51,7 +58,7 @@ export default function App() {
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'dark bg-[#050505] text-[#e0e0e0]' : 'bg-gray-50 text-gray-800'} font-sans antialiased`}>
       {!user ? (
-        <LoginUI onSuccess={() => {}} theme={theme} toggleTheme={toggleTheme} />
+        <LoginUI onSuccess={() => {}} theme={theme} toggleTheme={toggleTheme} externalError={pendingError} />
       ) : (
         <AdminDashboard theme={theme} toggleTheme={toggleTheme} />
       )}
