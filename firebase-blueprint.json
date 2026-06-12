@@ -1,0 +1,105 @@
+{
+  "entities": {
+    "LotteryCampaign": {
+      "title": "LotteryCampaign",
+      "description": "Represents an individual lottery or raffle prize campaign",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique ID of the lottery campaign" },
+        "title": { "type": "string", "description": "The name/title of the raffle" },
+        "description": { "type": "string", "description": "Detailed rules and descriptions of the lottery" },
+        "prizePool": { "type": "number", "description": "Grand prize or monetary prize pool" },
+        "ticketPrice": { "type": "number", "description": "The cost of a single raffle entry ticket" },
+        "totalTickets": { "type": "number", "description": "The maximum number of tickets available" },
+        "soldTickets": { "type": "number", "description": "The total number of tickets currently purchased" },
+        "status": { "type": "string", "enum": ["active", "drawn", "cancelled"], "description": "Current state of the lottery draw" },
+        "winnerEmail": { "type": "string", "format": "email", "description": "Email identifier of the winning buyer" },
+        "winnerTicket": { "type": "string", "description": "The lucky winning ticket number" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Campaign registration timestamp" },
+        "drawDate": { "type": "string", "format": "date-time", "description": "Scheduled or actual draw timestamp" }
+      },
+      "required": ["title", "prizePool", "ticketPrice", "totalTickets", "soldTickets", "status", "createdAt"]
+    },
+    "RaffleTicket": {
+      "title": "RaffleTicket",
+      "description": "Represents an individual entry ticket purchased for a lottery campaign",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique purchase ticket identifier" },
+        "lotteryId": { "type": "string", "description": "Reference ID to the target LotteryCampaign" },
+        "lotteryTitle": { "type": "string", "description": "Denormalized campaign title for fast lookup UI" },
+        "ticketNumber": { "type": "string", "description": "Unique assigned index/number for raffle draw" },
+        "buyerEmail": { "type": "string", "format": "email", "description": "Purchaser's contact/auth email" },
+        "buyerName": { "type": "string", "description": "Purchaser's display name" },
+        "purchasedAt": { "type": "string", "format": "date-time", "description": "Purchase transaction timestamp" },
+        "status": { "type": "string", "enum": ["pending", "won", "lost"], "description": "Raffle contest outcome status" }
+      },
+      "required": ["lotteryId", "ticketNumber", "buyerEmail", "buyerName", "purchasedAt", "status"]
+    },
+    "ManagedUser": {
+      "title": "ManagedUser",
+      "description": "Represents a system operator or administrator authorized to use the platform",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique user identifier" },
+        "name": { "type": "string", "description": "User display name" },
+        "email": { "type": "string", "format": "email", "description": "User login/auth email" },
+        "password": { "type": "string", "description": "User verification hash or trace parameter" },
+        "campus": { "type": "string", "description": "Assigned geographical or academic campus" },
+        "role": { "type": "string", "enum": ["Admin", "Moderator", "Staff"], "description": "Assigned organizational role" },
+        "status": { "type": "string", "enum": ["Active", "Inactive"], "description": "Sign-in or operational activity status" },
+        "permission": { "type": "string", "description": "Explicit capabilities or access permissions description string" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "User profile creation date" }
+      },
+      "required": ["name", "email", "campus", "role", "status", "permission"]
+    },
+    "RolePermissionConfig": {
+      "title": "RolePermissionConfig",
+      "description": "Custom visibility and feature access configuration matrix for distinct roles",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Role identifier like user, editor, admin, superadmin" },
+        "dashboard": { "type": "boolean", "description": "Grant access to the campaign dashboard" },
+        "profile": { "type": "boolean", "description": "Grant access to profile editing" },
+        "history": { "type": "boolean", "description": "Grant access to ticket validation ledger history list" },
+        "users": { "type": "boolean", "description": "Grant access to manage users database profiles" },
+        "permissions": { "type": "boolean", "description": "Grant access to modify role configurations" }
+      },
+      "required": ["dashboard", "profile", "history", "users", "permissions"]
+    },
+    "DashboardPanel": {
+      "title": "DashboardPanel",
+      "description": "Represents a distinct dashboard panel categorization group for separating campaigns and stats",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique ID of the panel" },
+        "name": { "type": "string", "description": "The visible display name of the panel" },
+        "description": { "type": "string", "description": "A description of the panel focus" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Panel registration timestamp" }
+      },
+      "required": ["id", "name", "createdAt"]
+    }
+  },
+  "firestore": {
+    "lotteries/{lotteryId}": {
+      "schema": "LotteryCampaign",
+      "description": "Exposes standard and active lottery campaign structures"
+    },
+    "tickets/{ticketId}": {
+      "schema": "RaffleTicket",
+      "description": "Registry of completed ticket items"
+    },
+    "users/{userId}": {
+      "schema": "ManagedUser",
+      "description": "System user profiles managing lotteries and tickets"
+    },
+    "role_permissions/{roleId}": {
+      "schema": "RolePermissionConfig",
+      "description": "Visibility constraints and access controls assigned to individual user access levels"
+    },
+    "panels/{panelId}": {
+      "schema": "DashboardPanel",
+      "description": "Collection of available dashboard panels for separate campaign groups"
+    }
+  }
+}
