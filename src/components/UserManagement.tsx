@@ -31,7 +31,8 @@ import {
   Search,
   Shield,
   AlertTriangle,
-  ExternalLink
+  ExternalLink,
+  LogIn
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 
@@ -43,6 +44,7 @@ interface UserManagementProps {
   activePanelId?: string;
   isSuperAdmin?: boolean;
   viewMode?: 'users' | 'approve';
+  onImpersonateUser?: (uid: string) => void;
 }
 
 export default function UserManagement({ 
@@ -52,8 +54,17 @@ export default function UserManagement({
   panels = [],
   activePanelId = 'default',
   isSuperAdmin = false,
-  viewMode = 'users'
+  viewMode = 'users',
+  onImpersonateUser
 }: UserManagementProps) {
+
+  const [localViewMode, setLocalViewMode] = useState<'users' | 'approve'>(viewMode);
+
+  useEffect(() => {
+    setLocalViewMode(viewMode);
+  }, [viewMode]);
+
+  const currentViewMode = localViewMode;
 
   const [users, setUsers] = useState<ManagedUser[]>(() => {
     const cached = localStorage.getItem('cached_users_mgmt');
@@ -307,8 +318,8 @@ export default function UserManagement({
   const filteredUsers = currentPanelUsers.filter(user => {
     // Tab filter
     const status = user.status ? user.status.trim() : '';
-    if (viewMode === 'users' && (!status || status === 'Pending' || status === 'pending')) return false;
-    if (viewMode === 'approve' && (status && status !== 'Pending' && status !== 'pending')) return false;
+    if (currentViewMode === 'users' && (!status || status === 'Pending' || status === 'pending')) return false;
+    if (currentViewMode === 'approve' && (status && status !== 'Pending' && status !== 'pending')) return false;
 
     const term = searchTerm.toLowerCase();
     return (
@@ -349,7 +360,7 @@ export default function UserManagement({
             <h3 className={`text-2xl font-bold tracking-tight ${theme === 'dark' ? 'text-white' : 'text-gray-900'} mt-1`}>{totalUsersCount}</h3>
             <p className="text-[10px] text-gray-400 font-mono mt-0.5">Total System Users</p>
           </div>
-          <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#161616] border-[#262626] text-amber-500' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>
+          <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-amber-500' : 'bg-amber-50 text-amber-605 border-gray-200'}`}>
             <Users className="w-6 h-6" />
           </div>
         </div>
@@ -360,7 +371,7 @@ export default function UserManagement({
             <h3 className="text-2xl font-bold tracking-tight text-emerald-500 mt-1">{activeUsersCount}</h3>
             <p className="text-[10px] text-gray-400 font-mono mt-0.5">Active Staff members</p>
           </div>
-          <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#161616] border-[#262626] text-emerald-500' : 'bg-emerald-50 text-emerald-600 border-emerald-200'}`}>
+          <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-emerald-505' : 'bg-emerald-50 text-emerald-600 border-gray-200'}`}>
             <UserCheck className="w-6 h-6" />
           </div>
         </div>
@@ -371,7 +382,7 @@ export default function UserManagement({
             <h3 className="text-2xl font-bold tracking-tight text-rose-500 mt-1">{inactiveUsersCount}</h3>
             <p className="text-[10px] text-gray-400 font-mono mt-0.5">Inactive Suspended accounts</p>
           </div>
-          <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#161616] border-[#262626] text-rose-500' : 'bg-[#fff5f5] text-rose-600 border-rose-200'}`}>
+          <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-rose-500' : 'bg-[#fff5f5] text-rose-600 border-gray-200'}`}>
             <UserX className="w-6 h-6" />
           </div>
         </div>
@@ -382,10 +393,36 @@ export default function UserManagement({
             <h3 className="text-2xl font-bold tracking-tight text-amber-500 mt-1">{pendingUsersCount}</h3>
             <p className="text-[10px] text-gray-400 font-mono mt-0.5">Awaiting Approval</p>
           </div>
-          <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#161616] border-[#262626] text-amber-500' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>
+          <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-amber-500' : 'bg-amber-50 text-amber-605 border-gray-200'}`}>
             <AlertTriangle className="w-6 h-6" />
           </div>
         </div>
+      </div>
+
+      {/* Tab Switcher for User Management */}
+      <div className="flex border-b border-gray-200 dark:border-[#1a1a1a] gap-2 pt-2">
+        <button
+          onClick={() => setLocalViewMode('users')}
+          className={`px-5 py-3 text-xs font-bold tracking-wide transition-all border-b-2 -mb-[2px] cursor-pointer flex items-center gap-2 ${
+            currentViewMode === 'users'
+              ? 'border-amber-500 text-amber-505 dark:text-amber-500 font-extrabold'
+              : 'border-transparent text-gray-400 hover:text-gray-900 dark:hover:text-white'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          User Management Panel
+        </button>
+        <button
+          onClick={() => setLocalViewMode('approve')}
+          className={`px-5 py-3 text-xs font-bold tracking-wide transition-all border-b-2 -mb-[2px] cursor-pointer flex items-center gap-2 ${
+            currentViewMode === 'approve'
+              ? 'border-amber-500 text-amber-505 dark:text-amber-500 font-extrabold'
+              : 'border-transparent text-gray-400 hover:text-gray-900 dark:hover:text-white'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          Approved User
+        </button>
       </div>
 
       {/* 2. Main Title Control Panel & Actions */}
@@ -393,21 +430,21 @@ export default function UserManagement({
         <div>
           <div className="flex items-center gap-2">
             <h3 className={`text-lg font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'} tracking-tight`}>
-              {viewMode === 'approve' ? 'Pending Approval Requests' : 'User Management Panel'}
+              {currentViewMode === 'approve' ? 'Pending Approval Requests' : 'User Management Panel'}
             </h3>
-            {viewMode !== 'approve' && (
+            {currentViewMode !== 'approve' && (
               <span className="text-[9px] font-mono uppercase tracking-wider py-0.5 px-2 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-full font-extrabold animate-pulse">
                 {panels.find(p => p.id === activePanelId)?.name || 'Main Panel'}
               </span>
             )}
           </div>
           <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} mt-0.5`}>
-            {viewMode === 'approve' 
+            {currentViewMode === 'approve' 
               ? 'Review pending registrations and assign them to an active system panel.'
               : 'View, add, edit, or delete active administrators and access profiles in real-time under the active panel'}
           </p>
         </div>
-        {viewMode !== 'approve' && (
+        {currentViewMode !== 'approve' && (
           <button
             id="add-user-btn"
             onClick={handleOpenAddModal}
@@ -448,7 +485,7 @@ export default function UserManagement({
           No user records found. Click "Add User" to register a new operator profile.
         </div>
       ) : (
-        <div className={`overflow-auto max-h-[380px] rounded-2xl border ${theme === 'dark' ? 'border-[#1a1a1a]/80 bg-[#0d0d0d]' : 'border-gray-200 bg-white shadow-sm'}`}>
+        <div className={`overflow-auto max-h-[380px] rounded-2xl border ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#0d0d0d]' : 'border-gray-200 bg-white shadow-sm'}`}>
           <table className="w-full text-left text-sm font-sans border-collapse">
             <thead>
               <tr className={`${theme === 'dark' ? 'bg-[#060606] text-gray-400 border-b border-[#1a1a1a]' : 'bg-gray-50 text-gray-500 border-b border-gray-200'} text-xs font-mono uppercase tracking-wider`}>
@@ -464,7 +501,7 @@ export default function UserManagement({
                 <th className="py-1 px-1.5 text-center">Actions</th>
               </tr>
             </thead>
-            <tbody className={`divide-y ${theme === 'dark' ? 'divide-[#1a1a1a]/60 text-gray-300' : 'divide-gray-150 text-gray-700'} text-xs`}>
+            <tbody className={`divide-y ${theme === 'dark' ? 'divide-[#1a1a1a] text-gray-300' : 'divide-gray-200 text-gray-700'} text-xs`}>
               {filteredUsers.map((user, idx) => (
                 <tr key={user.id} className={`${theme === 'dark' ? 'hover:bg-[#161616]/40' : 'hover:bg-gray-50/70'} transition-all`}>
                   <td className="py-0.5 px-1.5 text-center font-mono font-medium text-gray-550">
@@ -519,7 +556,7 @@ export default function UserManagement({
                     </span>
                   </td>
                   <td className="py-0.5 px-1.5 text-center">
-                    {viewMode === 'approve' ? (
+                    {currentViewMode === 'approve' ? (
                       <select
                         value={user.status || 'Pending'}
                         onChange={(e) => handleUpdateUserField(user.id, 'status', e.target.value)}
@@ -549,7 +586,7 @@ export default function UserManagement({
                     )}
                   </td>
                   <td className="py-0.5 px-1.5">
-                    {viewMode === 'approve' ? (
+                    {currentViewMode === 'approve' ? (
                       <select
                         value={user.panelId || 'default'}
                         onChange={(e) => handleUpdateUserField(user.id, 'panelId', e.target.value)}
@@ -574,12 +611,12 @@ export default function UserManagement({
                   </td>
                   <td className="py-0.5 px-1.5">
                     <div className="flex items-center justify-center gap-1.5">
-                      {viewMode === 'approve' && (
+                      {currentViewMode === 'approve' && (
                         <button
                           onClick={() => handleApproveUser(user)}
                           className={`p-1.5 rounded-lg border ${
                             theme === 'dark' 
-                              ? 'bg-[#161616] border-[#222] hover:bg-emerald-500/15 text-emerald-505' 
+                              ? 'bg-[#161616] border-[#1a1a1a] hover:bg-emerald-500/15 text-emerald-505' 
                               : 'bg-white border-gray-200 hover:bg-emerald-50 text-emerald-600 shadow-sm'
                           } transition-colors cursor-pointer`}
                           title="Approve user"
@@ -587,12 +624,12 @@ export default function UserManagement({
                           <Check className="w-3.5 h-3.5" />
                         </button>
                       )}
-                      {viewMode !== 'approve' && (
+                      {currentViewMode !== 'approve' && (
                         <button
                           onClick={() => handleOpenEditModal(user)}
                           className={`p-1.5 rounded-lg border ${
                             theme === 'dark' 
-                              ? 'bg-[#161616] border-[#222] hover:bg-amber-500/15 text-amber-505' 
+                              ? 'bg-[#161616] border-[#1a1a1a] hover:bg-amber-500/15 text-amber-505' 
                               : 'bg-white border-gray-200 hover:bg-amber-50 text-amber-600 shadow-sm'
                           } transition-colors cursor-pointer`}
                           title="Edit user"
@@ -600,11 +637,24 @@ export default function UserManagement({
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                       )}
+                      {onImpersonateUser && currentViewMode !== 'approve' && (
+                        <button
+                          onClick={() => onImpersonateUser(user.id)}
+                          className={`p-1.5 rounded-lg border ${
+                            theme === 'dark' 
+                              ? 'bg-[#161616] border-[#1a1a1a] hover:bg-indigo-500/15 text-indigo-400' 
+                              : 'bg-white border-gray-200 hover:bg-indigo-50 text-indigo-600 shadow-sm'
+                          } transition-colors cursor-pointer`}
+                          title="Login as User"
+                        >
+                          <LogIn className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDeleteUser(user)}
                         className={`p-1.5 rounded-lg border ${
                           theme === 'dark' 
-                            ? 'bg-[#161616] border-[#222] hover:bg-rose-500/15 text-rose-505' 
+                            ? 'bg-[#161616] border-[#1a1a1a] hover:bg-rose-500/15 text-rose-505' 
                             : 'bg-white border-gray-200 hover:bg-rose-50 text-rose-600 shadow-sm'
                         } transition-colors cursor-pointer`}
                         title="Delete user"
@@ -639,7 +689,7 @@ export default function UserManagement({
                 </h4>
                 <button
                   onClick={() => setShowModal(false)}
-                  className={`p-1 px-2.5 ${theme === 'dark' ? 'bg-[#161616] border-[#262626] text-gray-400 hover:text-white' : 'bg-gray-100 border-gray-200 text-gray-500 hover:text-gray-805'} border rounded-lg text-xs transition-colors cursor-pointer`}
+                  className={`p-1 px-2.5 ${theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-gray-400 hover:text-white' : 'bg-gray-100 border-gray-200 text-gray-500 hover:text-gray-805'} border rounded-lg text-xs transition-colors cursor-pointer`}
                 >
                   Close ✕
                 </button>
@@ -658,7 +708,7 @@ export default function UserManagement({
                       onChange={(e) => setFormName(e.target.value)}
                       placeholder="e.g. John Doe"
                       className={`w-full ${
-                        theme === 'dark' ? 'bg-[#161616] border-[#262626] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
+                        theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
                       } border rounded-xl pl-11 pr-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-amber-500`}
                     />
                   </div>
@@ -676,7 +726,7 @@ export default function UserManagement({
                       onChange={(e) => setFormEmail(e.target.value)}
                       placeholder="e.g. admin@money-lottery.app"
                       className={`w-full ${
-                        theme === 'dark' ? 'bg-[#161616] border-[#262626] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
+                        theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
                       } border rounded-xl pl-11 pr-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-amber-500`}
                     />
                   </div>
@@ -693,7 +743,7 @@ export default function UserManagement({
                       onChange={(e) => setFormPassword(e.target.value)}
                       placeholder="•••••••• (Min 6 characters)"
                       className={`w-full ${
-                        theme === 'dark' ? 'bg-[#161616] border-[#262626] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
+                        theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-white' : 'bg-gray-50 border-gray-200 text-gray-950'
                       } border rounded-xl pl-11 pr-11 py-3 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-amber-500`}
                     />
                     <button
@@ -714,7 +764,7 @@ export default function UserManagement({
                       value={formRole}
                       onChange={(e) => setFormRole(e.target.value)}
                       className={`w-full ${
-                        theme === 'dark' ? 'bg-[#161616] border-[#262626] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
+                        theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
                       } border rounded-xl px-3.5 py-3 focus:outline-none focus:ring-1 focus:ring-amber-500`}
                     >
                       <option value="User">User</option>
@@ -731,7 +781,7 @@ export default function UserManagement({
                       value={formStatus}
                       onChange={(e) => setFormStatus(e.target.value as 'Active' | 'Inactive' | 'Pending')}
                       className={`w-full ${
-                        theme === 'dark' ? 'bg-[#161616] border-[#262626] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
+                        theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
                       } border rounded-xl px-3.5 py-3 focus:outline-none focus:ring-1 focus:ring-amber-500`}
                     >
                       <option value="Active">Active</option>
@@ -751,7 +801,7 @@ export default function UserManagement({
                     onChange={(e) => setFormPhone(e.target.value)}
                     placeholder="e.g. 017XXXXXXXX"
                     className={`w-full ${
-                      theme === 'dark' ? 'bg-[#161616] border-[#262626] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
+                      theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
                     } border rounded-xl px-3.5 py-2.5 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-amber-500`}
                   />
                 </div>
@@ -763,7 +813,7 @@ export default function UserManagement({
                     value={formPanelId}
                     onChange={(e) => setFormPanelId(e.target.value)}
                     className={`w-full ${
-                      theme === 'dark' ? 'bg-[#161616] border-[#262626] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
+                      theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
                     } border rounded-xl px-3.5 py-3 focus:outline-none focus:ring-1 focus:ring-amber-500`}
                   >
                     {panels && panels.length > 0 ? (
@@ -783,7 +833,7 @@ export default function UserManagement({
                   <button
                     type="button"
                     onClick={() => setShowModal(false)}
-                    className={`px-4 py-2.5 ${theme === 'dark' ? 'bg-[#161616] border-[#262626]' : 'bg-gray-105 border-gray-200'} border text-xs rounded-xl cursor-pointer`}
+                    className={`px-4 py-2.5 ${theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a]' : 'bg-gray-105 border-gray-200'} border text-xs rounded-xl cursor-pointer`}
                   >
                     Cancel
                   </button>

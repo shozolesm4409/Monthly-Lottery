@@ -19,6 +19,8 @@ interface CreateCampaignModalProps {
   availableUsers: ManagedUser[];
   newMonthlyAmount: string;
   setNewMonthlyAmount: (val: string) => void;
+  newCampaignDrawType: 'Super Admin' | 'Admin/Super Admin' | 'Winner';
+  setNewCampaignDrawType: (val: 'Super Admin' | 'Admin/Super Admin' | 'Winner') => void;
   newMonthlyDrawDate: string;
   setNewMonthlyDrawDate: (val: string) => void;
   newTotalMonths: string;
@@ -48,6 +50,8 @@ export default function CreateCampaignModal({
   availableUsers,
   newMonthlyAmount,
   setNewMonthlyAmount,
+  newCampaignDrawType,
+  setNewCampaignDrawType,
   newMonthlyDrawDate,
   setNewMonthlyDrawDate,
   newTotalMonths,
@@ -175,7 +179,7 @@ export default function CreateCampaignModal({
                         onChange={(e) => setNewCampaignTitle(e.target.value)}
                         placeholder="e.g. Eid Mega Draw 2024"
                         className={`w-full border rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500/50 ${
-                          theme === 'dark' ? 'bg-[#161616] border-[#262626] text-white' : 'bg-white border-gray-200 text-gray-900'
+                          theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-white' : 'bg-white border-gray-200 text-gray-900'
                         }`}
                       />
                     </div>
@@ -190,7 +194,7 @@ export default function CreateCampaignModal({
                       onChange={(e) => setNewCampaignDesc(e.target.value)}
                       placeholder="Optional details..."
                       className={`w-full h-[105px] border rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500/50 resize-none font-sans ${
-                        theme === 'dark' ? 'bg-[#161616] border-[#262626] text-white' : 'bg-white border-gray-200 text-gray-900'
+                        theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-white' : 'bg-white border-gray-200 text-gray-900'
                       }`}
                     />
                   </div>
@@ -208,7 +212,7 @@ export default function CreateCampaignModal({
                       onClick={() => setIsUsersDropdownOpen(!isUsersDropdownOpen)}
                       className={`w-full border rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500/50 flex items-center justify-between text-left ${
                         theme === 'dark' 
-                          ? 'bg-[#161616] border-[#262626] text-white' 
+                          ? 'bg-[#161616] border-[#1a1a1a] text-white' 
                           : 'bg-white border-gray-200 text-gray-900'
                       }`}
                     >
@@ -235,7 +239,7 @@ export default function CreateCampaignModal({
                     {isUsersDropdownOpen && (
                       <div className={`absolute left-0 right-0 mt-1.5 p-2 rounded-xl border shadow-xl z-20 max-h-52 overflow-y-auto ${
                         theme === 'dark' 
-                          ? 'bg-[#121212] border-[#262626] text-white' 
+                          ? 'bg-[#121212] border-[#1a1a1a] text-white' 
                           : 'bg-white border-gray-200 text-gray-900'
                       }`}>
                         <div className="flex items-center justify-between gap-2 px-2 pb-2 mb-1.5 border-b border-gray-100 dark:border-[#222]">
@@ -288,20 +292,20 @@ export default function CreateCampaignModal({
                     )}
                   </div>
                   
-                  {/* Monthly Amount (from mock's left column duplicate) */}
+                  {/* Draw Type dropdown */}
                   <div>
-                    <label className="block text-[11px] text-gray-600 dark:text-gray-400 mb-1 font-sans">Monthly Amount</label>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      value={newMonthlyAmount}
-                      onChange={(e) => setNewMonthlyAmount(e.target.value)}
-                      placeholder="0"
-                      className={`w-full border rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500/50 ${
-                        theme === 'dark' ? 'bg-[#161616] border-[#262626] text-white' : 'bg-white border-gray-200 text-gray-900'
+                    <label className="block text-[11px] text-gray-600 dark:text-gray-400 mb-1 font-sans">Draw Type</label>
+                    <select
+                      value={newCampaignDrawType}
+                      onChange={(e) => setNewCampaignDrawType(e.target.value as any)}
+                      className={`w-full border rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500/50 cursor-pointer ${
+                        theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-amber-500' : 'bg-white border-gray-200 text-gray-900'
                       }`}
-                    />
+                    >
+                      <option value="Super Admin">Super Admin</option>
+                      <option value="Admin/Super Admin">Admin/Super Admin</option>
+                      <option value="Winner">Winner</option>
+                    </select>
                   </div>
                 </div>
 
@@ -320,7 +324,7 @@ export default function CreateCampaignModal({
                         onChange={(e) => setNewMonthlyAmount(e.target.value)}
                         placeholder="0"
                         className={`w-full border rounded-xl pl-7 pr-3 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500/50 ${
-                          theme === 'dark' ? 'bg-[#161616] border-[#262626] text-white' : 'bg-white border-gray-200 text-gray-900'
+                          theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-white' : 'bg-white border-gray-200 text-gray-900'
                         }`}
                       />
                     </div>
@@ -337,7 +341,7 @@ export default function CreateCampaignModal({
                         value={newMonthlyDrawDate}
                         onChange={(e) => setNewMonthlyDrawDate(e.target.value)}
                         className={`w-full border rounded-xl pr-10 pl-3 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500/50 [color-scheme:light] dark:[color-scheme:dark] ${
-                          theme === 'dark' ? 'bg-[#161616] border-[#262626] text-white' : 'bg-white border-gray-200 text-gray-900'
+                          theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-white' : 'bg-white border-gray-200 text-gray-900'
                         }`}
                       />
                     </div>
@@ -359,7 +363,7 @@ export default function CreateCampaignModal({
                     onChange={(e) => setNewWinnersPerDraw(e.target.value)}
                     placeholder="1"
                     className={`w-full border rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500/50 ${
-                      theme === 'dark' ? 'bg-[#161616] border-[#262626] text-white' : 'bg-white border-gray-200 text-gray-900'
+                      theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-white' : 'bg-white border-gray-200 text-gray-900'
                     }`}
                   />
                 </div>
@@ -373,7 +377,7 @@ export default function CreateCampaignModal({
                     onChange={(e) => setNewTotalMonths(e.target.value)}
                     placeholder="e.g. 12"
                     className={`w-full border rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500/50 ${
-                      theme === 'dark' ? 'bg-[#161616] border-[#262626] text-white' : 'bg-white border-gray-200 text-gray-900'
+                      theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-white' : 'bg-white border-gray-200 text-gray-900'
                     }`}
                   />
                 </div>

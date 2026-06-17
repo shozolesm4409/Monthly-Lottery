@@ -14,7 +14,7 @@ export const showSuccessAlert = (message: string, isDark: boolean = true) => {
     timerProgressBar: true,
     heightAuto: false,
     customClass: {
-      popup: 'font-sans rounded-2xl border ' + (isDark ? 'border-[#262626] shadow-2xl' : 'border-gray-100 shadow-lg'),
+      popup: 'font-sans rounded-2xl border ' + (isDark ? 'border-[#1a1a1a] shadow-2xl' : 'border-gray-200 shadow-lg'),
     }
   });
 };
@@ -30,7 +30,7 @@ export const showErrorAlert = (message: string, isDark: boolean = true) => {
     confirmButtonText: 'ঠিক আছে',
     heightAuto: false,
     customClass: {
-      popup: 'font-sans rounded-2xl border ' + (isDark ? 'border-[#262626] shadow-2xl' : 'border-gray-100 shadow-lg'),
+      popup: 'font-sans rounded-2xl border ' + (isDark ? 'border-[#1a1a1a] shadow-2xl' : 'border-gray-200 shadow-lg'),
     }
   });
 };

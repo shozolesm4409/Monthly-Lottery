@@ -217,7 +217,7 @@ export default function RolePermissions({ theme, activePanelName }: RolePermissi
       </div>
 
       {/* Role Selection Tabs with absolute styling matching the image */}
-      <div className={`inline-flex p-1 rounded-xl border ${theme === 'dark' ? 'bg-[#121212] border-[#222]' : 'bg-gray-100 border-gray-200'}`}>
+      <div className={`inline-flex p-1 rounded-xl border ${theme === 'dark' ? 'bg-[#121212] border-[#1a1a1a]' : 'bg-gray-100 border-gray-200'}`}>
         {(['user', 'editor', 'admin', 'superadmin'] as const).map((role) => (
           <button
             key={role}
@@ -269,9 +269,9 @@ export default function RolePermissions({ theme, activePanelName }: RolePermissi
 
           {/* Sidebar Visibility Panel */}
           <div className={`p-4 rounded-2xl border ${
-            theme === 'dark' ? 'bg-[#080808] border-[#181818]' : 'bg-gray-50/80 border-gray-150'
+            theme === 'dark' ? 'bg-[#080808] border-[#1a1a1a]' : 'bg-gray-50/80 border-gray-200'
           }`}>
-            <div className="flex items-center gap-2.5 mb-5 border-b pb-3 border-dashed dark:border-[#1d1d1d] border-gray-200">
+            <div className="flex items-center gap-2.5 mb-5 border-b pb-3 border-dashed dark:border-[#1a1a1a] border-gray-200">
               <span className="p-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/15 text-indigo-400">
                 <Layout className="w-4 h-4" />
               </span>
@@ -292,7 +292,7 @@ export default function RolePermissions({ theme, activePanelName }: RolePermissi
                     key={item.key}
                     className={`flex items-center justify-between p-2.5 rounded-xl border transition-all duration-300 ${
                       theme === 'dark'
-                        ? 'bg-[#101010] border-[#1e1e1e] hover:border-[#2a2a2a]'
+                        ? 'bg-[#101010] border-[#1a1a1a] hover:border-[#2a2a2a]'
                         : 'bg-white border-gray-200 hover:bg-gray-50/50'
                     }`}
                   >

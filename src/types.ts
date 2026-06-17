@@ -28,6 +28,7 @@ export interface LotteryCampaign {
   monthlyTotalAmount?: number;
   totalAmount?: number;
   winnersPerDraw?: number;
+  drawType?: 'Super Admin' | 'Admin/Super Admin' | 'Winner';
   panelId?: string; // Links this campaign to a specific Multi-Dashboard panel
   monthlyDraws?: {
     monthNumber: number;
@@ -84,6 +85,16 @@ export interface ManagedUser {
     drawMonthNum: number;
     prizeAmount: number;
     drawDate: string;
+  }[];
+  payHistory?: {
+    id: string;
+    campaignId: string;
+    campaignTitle: string;
+    roundMonthNum: number;
+    amount: number;
+    date: string;
+    status: 'PAID' | 'PENDING';
+    winnerName?: string;
   }[];
 }
 

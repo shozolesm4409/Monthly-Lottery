@@ -19,6 +19,8 @@ interface EditCampaignModalProps {
   availableUsers: ManagedUser[];
   editMonthlyAmount: number;
   setEditMonthlyAmount: (val: number) => void;
+  editCampaignDrawType: 'Super Admin' | 'Admin/Super Admin' | 'Winner';
+  setEditCampaignDrawType: (val: 'Super Admin' | 'Admin/Super Admin' | 'Winner') => void;
   editMonthlyDrawDate: string;
   setEditMonthlyDrawDate: (val: string) => void;
   editTotalMonths: number;
@@ -48,6 +50,8 @@ export default function EditCampaignModal({
   availableUsers,
   editMonthlyAmount,
   setEditMonthlyAmount,
+  editCampaignDrawType,
+  setEditCampaignDrawType,
   editMonthlyDrawDate,
   setEditMonthlyDrawDate,
   editTotalMonths,
@@ -286,20 +290,20 @@ export default function EditCampaignModal({
                     )}
                   </div>
                   
-                  {/* Monthly Amount (from mock's left column duplicate) */}
+                  {/* Draw Type dropdown */}
                   <div>
-                    <label className="block text-[11px] text-gray-600 dark:text-gray-400 mb-1 font-sans">Monthly Amount</label>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      value={editMonthlyAmount}
-                      onChange={(e) => setEditMonthlyAmount(Number(e.target.value))}
-                      placeholder="0"
-                      className={`w-full border rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500/50 ${
-                        theme === 'dark' ? 'bg-[#161616] border-[#262626] text-white' : 'bg-white border-gray-200 text-gray-900'
+                    <label className="block text-[11px] text-gray-600 dark:text-gray-400 mb-1 font-sans">Draw Type</label>
+                    <select
+                      value={editCampaignDrawType}
+                      onChange={(e) => setEditCampaignDrawType(e.target.value as any)}
+                      className={`w-full border rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500/50 cursor-pointer ${
+                        theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-amber-500' : 'bg-white border-gray-200 text-gray-900'
                       }`}
-                    />
+                    >
+                      <option value="Super Admin">Super Admin</option>
+                      <option value="Admin/Super Admin">Admin/Super Admin</option>
+                      <option value="Winner">Winner</option>
+                    </select>
                   </div>
                 </div>
 

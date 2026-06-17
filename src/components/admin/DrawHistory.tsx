@@ -17,6 +17,7 @@ import { LotteryCampaign } from '../../types';
 interface DrawHistoryProps {
   campaigns: LotteryCampaign[];
   theme: 'dark' | 'light';
+  initialCampaignId?: string;
 }
 
 interface FlattenedDraw {
@@ -31,10 +32,15 @@ interface FlattenedDraw {
   prizeAmount: number;
 }
 
-export default function DrawHistory({ campaigns, theme }: DrawHistoryProps) {
+export default function DrawHistory({ campaigns, theme, initialCampaignId = 'all' }: DrawHistoryProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCampaignId, setSelectedCampaignId] = useState('all');
+  const [selectedCampaignId, setSelectedCampaignId] = useState(initialCampaignId);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+
+  // Sync selectedCampaignId when initialCampaignId prop changes
+  React.useEffect(() => {
+    setSelectedCampaignId(initialCampaignId);
+  }, [initialCampaignId]);
 
   // Flatten all completed draws from all campaigns
   const allDraws = useMemo(() => {
@@ -62,14 +68,10 @@ export default function DrawHistory({ campaigns, theme }: DrawHistoryProps) {
     return draws;
   }, [campaigns]);
 
-  // Unique campaigns that have draws for our dropdown filter
-  const campaignsWithDraws = useMemo(() => {
-    const list = new Map<string, string>();
-    allDraws.forEach(d => {
-      list.set(d.campaignId, d.campaignTitle);
-    });
-    return Array.from(list.entries()).map(([id, title]) => ({ id, title }));
-  }, [allDraws]);
+  // All campaigns for our dropdown filter
+  const allCampaignOptions = useMemo(() => {
+    return campaigns.map(camp => ({ id: camp.id, title: camp.title }));
+  }, [campaigns]);
 
   // Filter and Search Draws
   const filteredDraws = useMemo(() => {
@@ -172,7 +174,7 @@ export default function DrawHistory({ campaigns, theme }: DrawHistoryProps) {
 
       {/* Audit Stats Bento Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className={`p-4 rounded-2xl border ${theme === 'dark' ? 'bg-[#060606] border-[#181818]' : 'bg-gray-50 border-gray-200'} space-y-1`}>
+        <div className={`p-4 rounded-2xl border ${theme === 'dark' ? 'bg-[#060606] border-[#1a1a1a]' : 'bg-gray-50 border-gray-200'} space-y-1`}>
           <p className="text-[10px] uppercase font-bold font-mono text-gray-550">Total Rounds Drawn</p>
           <div className="flex items-center gap-2">
             <Layers className="w-4 h-4 text-blue-500" />
@@ -182,7 +184,7 @@ export default function DrawHistory({ campaigns, theme }: DrawHistoryProps) {
           </div>
         </div>
 
-        <div className={`p-4 rounded-2xl border ${theme === 'dark' ? 'bg-[#060606] border-[#181818]' : 'bg-gray-50 border-gray-200'} space-y-1`}>
+        <div className={`p-4 rounded-2xl border ${theme === 'dark' ? 'bg-[#060606] border-[#1a1a1a]' : 'bg-gray-50 border-gray-200'} space-y-1`}>
           <p className="text-[10px] uppercase font-bold font-mono text-gray-550">Total Prizes Distributed</p>
           <div className="flex items-center gap-1.5">
             <span className="text-amber-500 font-bold font-sans">৳</span>
@@ -192,7 +194,7 @@ export default function DrawHistory({ campaigns, theme }: DrawHistoryProps) {
           </div>
         </div>
 
-        <div className={`p-4 rounded-2xl border ${theme === 'dark' ? 'bg-[#060606] border-[#181818]' : 'bg-gray-50 border-gray-200'} space-y-1`}>
+        <div className={`p-4 rounded-2xl border ${theme === 'dark' ? 'bg-[#060606] border-[#1a1a1a]' : 'bg-gray-50 border-gray-200'} space-y-1`}>
           <p className="text-[10px] uppercase font-bold font-mono text-gray-550">Unique Winners Mapped</p>
           <div className="flex items-center gap-2">
             <Trophy className="w-4 h-4 text-amber-500" />
@@ -218,7 +220,7 @@ export default function DrawHistory({ campaigns, theme }: DrawHistoryProps) {
             onChange={(e) => setSearchTerm(e.target.value)}
             className={`w-full py-2.5 pl-10 pr-4 text-xs rounded-xl border font-sans tracking-wide transition-all ${
               theme === 'dark'
-                ? 'bg-[#121212] border-[#222] text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500'
+                ? 'bg-[#121212] border-[#1a1a1a] text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500'
                 : 'bg-white border-gray-200 text-gray-850 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'
             }`}
           />
@@ -232,12 +234,12 @@ export default function DrawHistory({ campaigns, theme }: DrawHistoryProps) {
             onChange={(e) => setSelectedCampaignId(e.target.value)}
             className={`w-full py-2.5 px-3.5 text-xs rounded-xl border font-sans transition-all cursor-pointer ${
               theme === 'dark'
-                ? 'bg-[#121212] border-[#222] text-gray-300 focus:border-amber-500'
+                ? 'bg-[#121212] border-[#1a1a1a] text-gray-300 focus:border-amber-500'
                 : 'bg-white border-gray-200 text-gray-700 focus:border-emerald-500'
             }`}
           >
             <option value="all">All Campaigns</option>
-            {campaignsWithDraws.map((camp) => (
+            {allCampaignOptions.map((camp) => (
               <option key={camp.id} value={camp.id}>{camp.title}</option>
             ))}
           </select>
@@ -250,7 +252,7 @@ export default function DrawHistory({ campaigns, theme }: DrawHistoryProps) {
             onClick={toggleSort}
             className={`w-full py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
               theme === 'dark'
-                ? 'bg-[#121212] border-[#222] text-gray-300 hover:text-white hover:bg-[#1a1a1a]'
+                ? 'bg-[#121212] border-[#1a1a1a] text-gray-300 hover:text-white hover:bg-[#1a1a1a]'
                 : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
             }`}
           >
@@ -262,7 +264,7 @@ export default function DrawHistory({ campaigns, theme }: DrawHistoryProps) {
 
       {/* Main Logs Table */}
       <div className={`border rounded-2xl overflow-hidden ${
-        theme === 'dark' ? 'bg-[#080808]/50 border-[#1a1a1a]' : 'bg-gray-50/40 border-gray-150'
+        theme === 'dark' ? 'bg-[#080808]/50 border-[#1a1a1a]' : 'bg-gray-50/40 border-gray-200'
       }`}>
         <div className="overflow-auto max-h-[380px]">
           <table className="w-full text-left border-collapse">
@@ -279,7 +281,9 @@ export default function DrawHistory({ campaigns, theme }: DrawHistoryProps) {
                 <th className="py-1 px-1.5 font-bold text-center">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y dark:divide-[#151515] divide-gray-100 text-xs font-medium font-sans">
+            <tbody className={`divide-y text-xs font-medium font-sans ${
+              theme === 'dark' ? 'divide-[#1a1a1a]' : 'divide-gray-200'
+            }`}>
               {filteredDraws.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-gray-500 font-mono text-xs">

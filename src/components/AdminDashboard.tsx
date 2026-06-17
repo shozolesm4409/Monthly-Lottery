@@ -30,6 +30,7 @@ import CreateCampaignModal from './admin/modals/CreateCampaignModal';
 import EditCampaignModal from './admin/modals/EditCampaignModal';
 import DeleteConfirmModal from './admin/modals/DeleteConfirmModal';
 import SpinWheelModal from './admin/modals/SpinWheelModal';
+import ManualWinnerModal from './admin/modals/ManualWinnerModal';
 import { 
   Trophy, 
   Ticket, 
@@ -53,7 +54,9 @@ import {
   User,
   Edit2,
   History,
-  Bell
+  Bell,
+  Search,
+  ArrowUpDown
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -120,6 +123,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
   });
   const [selectedCampaignUsers, setSelectedCampaignUsers] = useState<string[]>([]);
   const [monthlyAmount, setMonthlyAmount] = useState<number>(0);
+  const [campaignDrawType, setCampaignDrawType] = useState<'Super Admin' | 'Admin/Super Admin' | 'Winner'>('Super Admin');
   const [monthlyDrawDate, setMonthlyDrawDate] = useState<string>('');
   const [isUsersDropdownOpen, setIsUsersDropdownOpen] = useState(false);
 
@@ -157,6 +161,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
   const [editCampaignDesc, setEditCampaignDesc] = useState('');
   const [editSelectedUsers, setEditSelectedUsers] = useState<string[]>([]);
   const [editMonthlyAmount, setEditMonthlyAmount] = useState<number>(0);
+  const [editCampaignDrawType, setEditCampaignDrawType] = useState<'Super Admin' | 'Admin/Super Admin' | 'Winner'>('Super Admin');
   const [editMonthlyDrawDate, setEditMonthlyDrawDate] = useState<string>('');
   const [editTotalMonths, setEditTotalMonths] = useState<number>(0);
   const [editWinnersPerDraw, setEditWinnersPerDraw] = useState<number>(1);
@@ -167,11 +172,17 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
   const [deleteCampaign, setDeleteCampaign] = useState<LotteryCampaign | null>(null);
 
   // Layout and Sidebar active view
-  const [activeTab, setActiveTab] = useState<'campaigns' | 'users' | 'approve' | 'tickets' | 'profile' | 'permissions' | 'all_campaigns' | 'roadmap' | 'history' | 'spin_wheel' | 'achievements' | 'notifications'>('campaigns');
+  const [activeTab, setActiveTab] = useState<'campaigns' | 'users' | 'approve' | 'tickets' | 'profile' | 'permissions' | 'all_campaigns' | 'roadmap' | 'history' | 'spin_wheel' | 'achievements' | 'notifications' | 'history_logs'>('campaigns');
+  const [historyLogTab, setHistoryLogTab] = useState<'pay_history' | 'draw_history'>('pay_history');
   const [recentlyDrawnMonth, setRecentlyDrawnMonth] = useState<number | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showSpinWheelModal, setShowSpinWheelModal] = useState(false);
   const [spinCampaignTarget, setSpinCampaignTarget] = useState<LotteryCampaign | null>(null);
+  const [manualEntryCampaignTarget, setManualEntryCampaignTarget] = useState<LotteryCampaign | null>(null);
+  const [historyFilterCampaignId, setHistoryFilterCampaignId] = useState<string>('all');
+  const [payHistorySearch, setPayHistorySearch] = useState<string>('');
+  const [payHistoryCampaignFilter, setPayHistoryCampaignFilter] = useState<string>('all');
+  const [payHistorySort, setPayHistorySort] = useState<'newest' | 'oldest'>('newest');
 
   const mainScrollRef = useRef<HTMLElement | null>(null);
 
@@ -179,6 +190,9 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
   useEffect(() => {
     if (mainScrollRef.current) {
       mainScrollRef.current.scrollTop = 0;
+    }
+    if (activeTab !== 'history' && activeTab !== 'history_logs') {
+      setHistoryFilterCampaignId('all');
     }
   }, [activeTab]);
 
@@ -319,8 +333,12 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
   };
 
   // Check if current user email matches our target primary email
-  const user = auth.currentUser;
-  const isTargetAdmin = user?.email === 'shozolesm4409@gmail.com' || user?.email?.includes('admin');
+  const authUser = auth.currentUser;
+  const [impersonatedUid, setImpersonatedUid] = useState<string | null>(null);
+  
+  const activeUid = impersonatedUid || authUser?.uid;
+  const realUserIsAdmin = authUser?.email === 'shozolesm4409@gmail.com' || authUser?.email?.includes('admin');
+  const isTargetAdmin = !impersonatedUid && realUserIsAdmin;
 
   // Database record state for log-in user
   const [dbUser, setDbUser] = useState<ManagedUser | null>(() => {
@@ -369,7 +387,8 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
         : 'user'));
 
   // Visibility status system helper
-  const hasVisibility = (menuKey: 'dashboard' | 'profile' | 'campaigns' | 'users' | 'approve' | 'permissions' | 'history' | 'achievements' | 'notifications' | 'panels') => {
+  const hasVisibility = (menuKey: 'dashboard' | 'profile' | 'campaigns' | 'users' | 'approve' | 'permissions' | 'history' | 'achievements' | 'notifications' | 'panels' | 'pay_history') => {
+    if (menuKey === 'pay_history') return true;
     if (isTargetAdmin) return true;
     
     const activePermConfig = rolePermissions[resolvedRole];
@@ -389,41 +408,47 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
 
   // Fetch corresponding ManagedUser document in Firestore if exists to verify Access Role - Use real-time listener
   useEffect(() => {
-    if (!user?.uid) {
+    if (!activeUid) {
       setLoadingDb(false);
       return;
     }
 
-    const userDocRef = doc(db, 'users', user.uid);
+    const userDocRef = doc(db, 'users', activeUid);
     const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const fetchedUser = { id: docSnap.id, ...docSnap.data() } as ManagedUser;
         setDbUser(fetchedUser);
-        localStorage.setItem('cached_db_user', JSON.stringify(fetchedUser));
+        if (!impersonatedUid) {
+          localStorage.setItem('cached_db_user', JSON.stringify(fetchedUser));
+        }
         if (fetchedUser.panelId) {
           setActivePanelId(prev => prev === fetchedUser.panelId ? prev : (fetchedUser.panelId || 'default'));
         }
         setLoadingDb(false);
       } else {
         // Migration/Creation logic if user doesn't exist yet but is logged in
+        if (impersonatedUid) {
+          setLoadingDb(false);
+          return;
+        }
         const autoSync = async () => {
           const defaultRole = isTargetAdmin ? 'Admin' : 'User';
           const defaultPerm = isTargetAdmin ? 'Full Access' : 'User Limited Access';
           const newDocData = {
-            id: user.uid,
-            name: user.displayName || user.email?.split('@')[0] || 'Staff User',
-            email: user.email || '',
+            id: activeUid,
+            name: authUser?.displayName || authUser?.email?.split('@')[0] || 'Staff User',
+            email: authUser?.email || '',
             password: 'N/A (Registration Required)',
             campus: 'Main Hub',
             role: defaultRole,
             status: 'Pending',
             permission: defaultPerm,
-            photoURL: user.photoURL || '',
+            photoURL: authUser?.photoURL || '',
             phone: 'N/A (Check Registration)',
             createdAt: new Date().toISOString()
           };
           try {
-            await setDoc(doc(db, 'users', user.uid), newDocData);
+            await setDoc(doc(db, 'users', activeUid), newDocData);
           } catch(e) {
             console.error("Auto-sync error:", e);
           }
@@ -436,7 +461,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
     });
 
     return () => unsubscribe();
-  }, [user?.uid]);
+  }, [activeUid, impersonatedUid, authUser, isTargetAdmin]);
 
   const isUserAdmin = isTargetAdmin || (dbUser && (dbUser.role === 'Admin' || dbUser.role === 'admin'));
 
@@ -511,6 +536,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
       totalAmount: computedTotalAmount,
       winnersPerDraw: winnersCount,
       monthlyDraws: initialDraws,
+      drawType: campaignDrawType,
       panelId: campaignPanelId
     };
 
@@ -522,6 +548,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
       setCampaignDesc('');
       setSelectedCampaignUsers([]);
       setMonthlyAmount(0);
+      setCampaignDrawType('Super Admin');
       setMonthlyDrawDate('');
       setTotalMonthsInput('');
       setNewWinnersPerDraw('1');
@@ -787,6 +814,26 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
           }
         }
       }
+
+      // Save the monthly payment transaction information in payHistory of all participating users
+      for (const participantId of participants) {
+        try {
+          await updateDoc(doc(db, 'users', participantId), {
+            payHistory: arrayUnion({
+              id: `pay-${campaign.id}-${monthNumber}-${participantId}`,
+              campaignId: campaign.id,
+              campaignTitle: campaign.title,
+              roundMonthNum: monthNumber,
+              amount: campaign.monthlyAmount || 0,
+              date: new Date().toISOString(),
+              status: 'PAID',
+              winnerName: jointWinnerName || 'No Winner'
+            })
+          });
+        } catch (err) {
+          console.error(`Failed to update pay history for participant ${participantId}:`, err);
+        }
+      }
       
       // Update roadmapCampaign state
       const newCampData = {
@@ -813,6 +860,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
     setEditCampaignDesc(camp.description);
     setEditSelectedUsers(camp.selectedUsers || []);
     setEditMonthlyAmount(camp.monthlyAmount || 0);
+    setEditCampaignDrawType(camp.drawType || 'Super Admin');
     setEditMonthlyDrawDate(camp.monthlyDrawDate || '');
     setEditTotalMonths(camp.totalMonths || 0);
     setEditWinnersPerDraw(camp.winnersPerDraw || 1);
@@ -898,6 +946,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
       totalAmount: computedTotalAmount,
       winnersPerDraw: editWinnersPerDraw,
       monthlyDraws: updatedDraws,
+      drawType: editCampaignDrawType,
       panelId: editPanelId
     };
 
@@ -1020,12 +1069,16 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
     : tickets.filter(t => t.lotteryId === activeFilterId);
 
   const renderCampaignCard = (camp: LotteryCampaign) => {
+    const isSuperAdminValue = resolvedRole === 'superadmin' || dbUser?.role === 'Super Admin' || dbUser?.role?.toLowerCase() === 'superadmin';
     return (
       <LotteryCampaignCard
         key={camp.id}
         camp={camp}
         theme={theme}
         isUserAdmin={isUserAdmin}
+        isSuperAdmin={isSuperAdminValue}
+        currentUserId={activeUid || ''}
+        currentUserEmail={dbUser?.email || authUser?.email || ''}
         processing={processing}
         handleOpenEditModal={handleOpenEditModal}
         handleResetCampaign={handleResetCampaign}
@@ -1034,6 +1087,14 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
         setRoadmapCampaign={setRoadmapCampaign}
         setRecentlyDrawnMonth={setRecentlyDrawnMonth}
         setActiveTab={setActiveTab}
+        handleOpenManualEntryModal={(targetCamp) => {
+          setManualEntryCampaignTarget(targetCamp);
+        }}
+        handleOpenHistoryWithFilter={(campaignId) => {
+          setHistoryFilterCampaignId(campaignId);
+          setActiveTab('history_logs');
+          setHistoryLogTab('draw_history');
+        }}
       />
     );
   };
@@ -1050,7 +1111,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
           <div className="absolute bottom-0 left-0 w-32 h-32 bg-yellow-500/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
           
           <div className="relative z-10 flex flex-col items-center">
-            <div className={`w-20 h-20 rounded-full mb-6 flex items-center justify-center ${theme === 'dark' ? 'bg-[#161616] border border-[#262626]' : 'bg-gray-50 border border-gray-100'}`}>
+            <div className={`w-20 h-20 rounded-full mb-6 flex items-center justify-center ${theme === 'dark' ? 'bg-[#161616] border border-[#1a1a1a]' : 'bg-gray-50 border border-gray-100'}`}>
               <ShieldCheck className={`w-10 h-10 ${theme === 'dark' ? 'text-amber-500' : 'text-amber-600'}`} />
             </div>
             
@@ -1064,7 +1125,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
               onClick={handleSignOut}
               className={`w-full py-3 px-4 rounded-xl font-bold text-sm transition-all ${
                 theme === 'dark' 
-                  ? 'bg-[#161616] text-white hover:bg-[#222] border border-[#262626]' 
+                  ? 'bg-[#161616] text-white hover:bg-[#222] border border-[#1a1a1a]' 
                   : 'bg-white text-gray-900 hover:bg-gray-50 border border-gray-200 shadow-sm'
               }`}
             >
@@ -1077,14 +1138,14 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
   }
 
   return (
-    <div className={`h-screen max-h-screen overflow-hidden ${theme === 'dark' ? 'bg-[#050505] text-[#e0e0e0]' : 'bg-gray-50 text-gray-800'} flex font-sans select-none transition-colors duration-300 relative`}>
+    <div className={`h-screen max-h-screen overflow-hidden ${theme === 'dark' ? 'bg-[#050505] text-[#e0e0e0]' : 'bg-gray-50 text-gray-800'} flex font-sans transition-colors duration-300 relative`}>
       
       <AdminSidebar
         theme={theme}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         hasVisibility={hasVisibility}
-        user={user}
+        user={authUser}
         handleSignOut={handleSignOut}
         mobileSidebarOpen={mobileSidebarOpen}
         setMobileSidebarOpen={setMobileSidebarOpen}
@@ -1163,6 +1224,24 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
         {/* 3. BODY SECTION */}
         <main ref={mainScrollRef} className="flex-1 overflow-y-auto p-3 sm:p-4.5 space-y-5">
 
+        {impersonatedUid && dbUser && (
+          <div className="flex items-center justify-between p-4 mb-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl">
+            <div className="flex items-center gap-3">
+              <User className="w-5 h-5 text-indigo-400" />
+              <div>
+                <h3 className={`text-sm font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>You are viewing this dashboard as {dbUser.name}</h3>
+                <p className="text-xs text-indigo-400">Any actions taken will be performed from the perspective of this account.</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setImpersonatedUid(null)}
+              className="px-4 py-2 text-xs font-bold transition-all border rounded-lg bg-indigo-500 text-white border-indigo-600 hover:bg-indigo-600"
+            >
+              Return to Admin
+            </button>
+          </div>
+        )}
+
         {activeTab === 'campaigns' && (
           <>
             {/* Statistical Widgets Bento-Grid */}
@@ -1173,7 +1252,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
                   <h3 className={`text-2xl font-bold tracking-tight ${theme === 'dark' ? 'text-white' : 'text-gray-905'}`}>{statsTotalCampaigns}</h3>
                   <p className="text-[10px] text-gray-400">{statsActiveCampaigns} Active lotteries</p>
                 </div>
-                <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#161616] text-blue-400 border-[#262626]' : 'bg-blue-50 text-blue-600 border-blue-150'}`}>
+                <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#161616] text-blue-400 border-[#1a1a1a]' : 'bg-blue-50 text-blue-600 border-blue-150'}`}>
                   <Activity className="w-6 h-6" />
                 </div>
               </div>
@@ -1184,7 +1263,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
                   <h3 className="text-2xl font-bold tracking-tight text-emerald-500">{statsTotalDrawsCount}</h3>
                   <p className="text-[10px] text-gray-400">Total drawn rounds</p>
                 </div>
-                <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#161616] text-emerald-400 border-[#262626]' : 'bg-emerald-50 text-emerald-600 border-emerald-150'}`}>
+                <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#161616] text-emerald-400 border-[#1a1a1a]' : 'bg-emerald-50 text-emerald-600 border-emerald-150'}`}>
                   <Trophy className="w-6 h-6" />
                 </div>
               </div>
@@ -1206,7 +1285,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
                   <h3 className="text-2xl font-bold tracking-tight text-indigo-550">{statsTotalPrizesPlanned.toLocaleString()} ৳</h3>
                   <p className="text-[10px] text-gray-400">Guaranteed rewards</p>
                 </div>
-                <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#161616] text-indigo-400 border-[#262626]' : 'bg-indigo-50 text-indigo-600 border-indigo-150'}`}>
+                <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-[#161616] text-indigo-400 border-[#1a1a1a]' : 'bg-indigo-50 text-indigo-600 border-indigo-150'}`}>
                   <Trophy className="w-6 h-6" />
                 </div>
               </div>
@@ -1299,6 +1378,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
               activePanelId={activePanelId}
               isSuperAdmin={resolvedRole === 'superadmin'}
               viewMode="users"
+              onImpersonateUser={(uid) => { setImpersonatedUid(uid); setActiveTab('campaigns'); }}
             />
           </div>
         )}
@@ -1314,6 +1394,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
               activePanelId={activePanelId}
               isSuperAdmin={resolvedRole === 'superadmin'}
               viewMode="approve"
+              onImpersonateUser={(uid) => { setImpersonatedUid(uid); setActiveTab('campaigns'); }}
             />
           </div>
         )}
@@ -1329,6 +1410,173 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
             />
           </div>
         )}
+
+        {/* 4B. MY PAY HISTORY SELECTION */}
+        {activeTab === 'pay_history_old' && (() => {
+          // Calculate stats for the user
+          const displayedCampaignIds = new Set(displayedCampaigns.map(c => c.id));
+          const history = (dbUser?.payHistory || []).filter(item => displayedCampaignIds.has(item.campaignId));
+          const totalPaid = history.reduce((sum, item) => sum + (item.amount || 0), 0);
+          
+          // Get campaigns that user participated in
+          const totalParticipatingCampaigns = displayedCampaigns.filter(c => c.selectedUsers?.includes(activeUid || '')).length;
+
+          // Date Formatter matching: 17 JUN 2026
+          const formatDateShort = (dateStr?: string) => {
+            if (!dateStr) return '';
+            const dt = new Date(dateStr);
+            const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+            const day = String(dt.getDate()).padStart(2, '0');
+            const month = months[dt.getMonth()] || 'GEN';
+            const year = dt.getFullYear();
+            return `${day} ${month} ${year}`;
+          };
+
+          return (
+            <div className="space-y-6">
+              {/* Header section with description */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h3 className={`text-lg font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-905'} tracking-tight`}>
+                    Pay History
+                  </h3>
+                  <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Review your monthly ticket subscription payments and contribution receipts
+                  </p>
+                </div>
+              </div>
+
+              {/* Statistics Panel */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                <div className={`p-5 rounded-2xl border flex items-center justify-between ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#0d0d0d]' : 'border-gray-200 bg-white shadow-sm'}`}>
+                  <div className="space-y-1">
+                    <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-450'} font-mono uppercase tracking-wider`}>
+                      Total Contributed
+                    </p>
+                    <h3 className="text-2xl font-black text-amber-500">
+                      ৳ {totalPaid.toLocaleString()}
+                    </h3>
+                    <p className="text-[10px] text-gray-400">Total processed monthly dues</p>
+                  </div>
+                  <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#161616] text-amber-400' : 'border-gray-200 bg-amber-50 text-amber-600'}`}>
+                    <DollarSign className="w-6 h-6" />
+                  </div>
+                </div>
+
+                <div className={`p-5 rounded-2xl border flex items-center justify-between ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#0d0d0d]' : 'border-gray-200 bg-white shadow-sm'}`}>
+                  <div className="space-y-1">
+                    <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-455'} font-mono uppercase tracking-wider`}>
+                      Your Campaigns
+                    </p>
+                    <h3 className={`text-2xl font-bold tracking-tight ${theme === 'dark' ? 'text-white' : 'text-gray-905'}`}>
+                      {totalParticipatingCampaigns}
+                    </h3>
+                    <p className="text-[10px] text-gray-400">Campaigns you participated in</p>
+                  </div>
+                  <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#161616] text-blue-400' : 'border-gray-200 bg-blue-50 text-blue-600'}`}>
+                    <Activity className="w-6 h-6" />
+                  </div>
+                </div>
+
+                <div className={`p-5 rounded-2xl border flex items-center justify-between ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#0d0d0d]' : 'border-gray-200 bg-white shadow-sm'}`}>
+                  <div className="space-y-1">
+                    <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-450'} font-mono uppercase tracking-wider`}>
+                      Total Paid Transactions
+                    </p>
+                    <h3 className={`text-2xl font-bold tracking-tight text-emerald-500`}>
+                      {history.length}
+                    </h3>
+                    <p className="text-[10px] text-gray-400">Drawn periods documented</p>
+                  </div>
+                  <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#161616] text-emerald-400' : 'border-gray-200 bg-emerald-50 text-emerald-600'}`}>
+                    <Trophy className="w-6 h-6" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Transactions Grid */}
+              {history.length === 0 ? (
+                <div className={`flex flex-col items-center justify-center p-12 text-center rounded-2xl border ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#0d0d0d]' : 'border-gray-200 bg-white shadow-xs'}`}>
+                  <div className="w-16 h-16 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 mb-4">
+                    <DollarSign className="w-8 h-8" />
+                  </div>
+                  <h4 className={`text-sm font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+                    No transactions recorded
+                  </h4>
+                  <p className="text-xs text-gray-400 mt-1 max-w-xs">
+                    Monthly transactions will automatically register here as soon as draws are completed for your participating campaigns.
+                  </p>
+                </div>
+              ) : (
+                <div className={`overflow-hidden rounded-2xl border ${
+                  theme === 'dark' ? 'border-[#1a1a1a] bg-[#0d0d0d]' : 'border-gray-200 bg-white shadow-sm'
+                }`}>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className={`border-b text-[10px] font-mono tracking-wider uppercase ${
+                          theme === 'dark' ? 'border-[#1a1a1a] bg-[#121212] text-gray-400' : 'border-gray-200 bg-gray-50 text-gray-500'
+                        }`}>
+                          <th className={`p-1 font-bold text-center w-12 border-r ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'}`}>SL</th>
+                          <th className={`p-1 font-bold border-r ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'}`}>Winner Name</th>
+                          <th className={`p-1 font-bold border-r ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'}`}>Date</th>
+                          <th className={`p-1 font-bold border-r ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'}`}>Campaign</th>
+                          <th className={`p-1 font-bold border-r ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'}`}>Round</th>
+                          <th className={`p-1 font-bold text-right border-r ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'}`}>Amount</th>
+                          <th className="p-1 font-bold text-center">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className={`divide-y ${theme === 'dark' ? 'divide-[#1a1a1a]' : 'divide-gray-200'}`}>
+                        {history.map((item, index) => (
+                          <tr 
+                            key={item.id}
+                            className={`transition-colors duration-200 text-xs ${
+                              theme === 'dark' 
+                                ? 'hover:bg-[#151515]/50' 
+                                : 'hover:bg-gray-50'
+                            }`}
+                          >
+                            {/* Serial Number */}
+                            <td className={`p-1 text-center font-bold font-mono border-r ${theme === 'dark' ? 'border-[#1a1a1a] text-gray-500' : 'border-gray-200 text-gray-400'}`}>
+                              {String(index + 1).padStart(2, '0')}
+                            </td>
+                            {/* Winner Name */}
+                            <td className={`p-1 font-bold border-r ${theme === 'dark' ? 'border-[#1a1a1a] text-amber-400' : 'border-gray-200 text-amber-600'} tracking-tight`}>
+                              {item.winnerName || 'Pending Draw'}
+                            </td>
+                            {/* Date */}
+                            <td className={`p-1 font-medium border-r ${theme === 'dark' ? 'border-[#1a1a1a] text-gray-300' : 'border-gray-200 text-gray-700'}`}>
+                              {formatDateShort(item.date)}
+                            </td>
+                            {/* Campaign Name */}
+                            <td className={`p-1 font-bold border-r ${theme === 'dark' ? 'border-[#1a1a1a] text-white' : 'border-gray-200 text-gray-900'} uppercase tracking-tight`}>
+                              {item.campaignTitle}
+                            </td>
+                            {/* Round Info */}
+                            <td className={`p-1 font-mono font-bold border-r ${theme === 'dark' ? 'border-[#1a1a1a] text-neutral-400' : 'border-gray-200 text-gray-500'}`}>
+                              Round #{item.roundMonthNum}
+                            </td>
+                            {/* Amount */}
+                            <td className={`p-1 font-extrabold text-right text-amber-500 font-sans text-sm border-r ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'}`}>
+                              ৳ {item.amount.toLocaleString()}
+                            </td>
+                            {/* Status Badge */}
+                            <td className="p-1 text-center">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-mono text-[9px] font-bold uppercase tracking-wider bg-emerald-500/10 border text-emerald-400 ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'}`}>
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                {item.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* 6. MY ACHIEVEMENTS SELECTION */}
         {activeTab === 'achievements' && (() => {
@@ -1500,12 +1748,13 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
           );
         })()}
 
-        {activeTab === 'notifications' && dbUser && (
+        {activeTab === 'notifications' && activeUid && (
           <NotificationsView 
             theme={theme} 
-            userEmail={dbUser.email} 
+            userId={activeUid} 
             activePanelId={activePanelId}
             campaigns={campaigns}
+            isSuperAdmin={resolvedRole === 'superadmin'}
           />
         )}
 
@@ -1532,14 +1781,283 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
         )}
 
         {/* DRAW HISTORY SELECTION */}
-        {activeTab === 'history' && (
+        {activeTab === 'history_old' && (
           <div className="p-[2px]">
             <DrawHistory 
               campaigns={displayedCampaigns}
               theme={theme}
+              initialCampaignId={historyFilterCampaignId}
             />
           </div>
         )}
+
+         {/* UNIFIED HISTORY LOGS SELECTION */}
+        {activeTab === 'history_logs' && (() => {
+          const displayedCampaignIds = new Set(displayedCampaigns.map(c => c.id));
+          const baseHistory = (dbUser?.payHistory || []).filter(item => displayedCampaignIds.has(item.campaignId));
+          const totalPaid = baseHistory.reduce((sum, item) => sum + (item.amount || 0), 0);
+          const totalParticipatingCampaigns = displayedCampaigns.filter(c => c.selectedUsers?.includes(activeUid || '')).length;
+
+          // Filter and Search Pay History
+          const filteredPayHistory = baseHistory.filter(item => {
+            const searchPattern = payHistorySearch.toLowerCase();
+            const matchesSearch = !payHistorySearch || 
+                                  item.campaignTitle.toLowerCase().includes(searchPattern) ||
+                                  (item.winnerName || '').toLowerCase().includes(searchPattern) ||
+                                  (item.winnerEmail || '').toLowerCase().includes(searchPattern);
+            const matchesCampaign = payHistoryCampaignFilter === 'all' || item.campaignId === payHistoryCampaignFilter;
+            return matchesSearch && matchesCampaign;
+          }).sort((a, b) => {
+            // Newest first by default
+            const diff = new Date(b.date).getTime() - new Date(a.date).getTime();
+            return payHistorySort === 'newest' ? diff : -diff;
+          });
+
+          // Unique participating campaigns for the dropdown
+          const participatingCampaignOpts = displayedCampaigns.filter(c => c.selectedUsers?.includes(activeUid || ''));
+
+          const formatDateShort = (dateStr?: string) => {
+            if (!dateStr) return '';
+            const dt = new Date(dateStr);
+            const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+            const day = String(dt.getDate()).padStart(2, '0');
+            const month = months[dt.getMonth()] || 'GEN';
+            const year = dt.getFullYear();
+            return `${day} ${month} ${year}`;
+          };
+
+          return (
+            <div className="space-y-6">
+              {/* Tab Switcher for History Logs */}
+              <div className={`flex border-b ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'} gap-2 pt-2`}>
+                <button
+                  id="sub-tab-pay-history"
+                  onClick={() => setHistoryLogTab('pay_history')}
+                  className={`px-5 py-3 text-xs font-bold tracking-wide transition-all border-b-2 -mb-[2px] cursor-pointer flex items-center gap-2 ${
+                    historyLogTab === 'pay_history'
+                      ? 'border-amber-500 text-amber-505 dark:text-amber-500 font-extrabold'
+                      : 'border-transparent text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  <DollarSign className="w-3.5 h-3.5" />
+                  Pay History
+                </button>
+                <button
+                  id="sub-tab-draw-history"
+                  onClick={() => setHistoryLogTab('draw_history')}
+                  className={`px-5 py-3 text-xs font-bold tracking-wide transition-all border-b-2 -mb-[2px] cursor-pointer flex items-center gap-2 ${
+                    historyLogTab === 'draw_history'
+                      ? 'border-amber-500 text-amber-505 dark:text-amber-500 font-extrabold'
+                      : 'border-transparent text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  <History className="w-3.5 h-3.5" />
+                  Draw History
+                </button>
+              </div>
+
+              {historyLogTab === 'pay_history' ? (
+                <div className="space-y-6">
+                  {/* Header section with description */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <h3 className={`text-lg font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-905'} tracking-tight`}>
+                        Pay History
+                      </h3>
+                      <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Review your monthly ticket subscription payments and contribution receipts
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Statistics Panel */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                    <div className={`p-5 rounded-2xl border flex items-center justify-between ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#0d0d0d]' : 'border-gray-200 bg-white shadow-sm'}`}>
+                      <div className="space-y-1">
+                        <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-450'} font-mono uppercase tracking-wider`}>
+                          Total Contributed
+                        </p>
+                        <h3 className="text-2xl font-black text-amber-500">
+                          ৳ {totalPaid.toLocaleString()}
+                        </h3>
+                        <p className="text-[10px] text-gray-400">Total processed monthly dues</p>
+                      </div>
+                      <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#161616] text-amber-400' : 'border-gray-200 bg-amber-50 text-amber-600'}`}>
+                        <DollarSign className="w-6 h-6" />
+                      </div>
+                    </div>
+
+                    <div className={`p-5 rounded-2xl border flex items-center justify-between ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#0d0d0d]' : 'border-gray-200 bg-white shadow-sm'}`}>
+                      <div className="space-y-1">
+                        <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-455'} font-mono uppercase tracking-wider`}>
+                          Your Campaigns
+                        </p>
+                        <h3 className={`text-2xl font-bold tracking-tight ${theme === 'dark' ? 'text-white' : 'text-gray-905'}`}>
+                          {totalParticipatingCampaigns}
+                        </h3>
+                        <p className="text-[10px] text-gray-400">Campaigns you participated in</p>
+                      </div>
+                      <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#161616] text-blue-400' : 'border-gray-200 bg-blue-50 text-blue-600'}`}>
+                        <Activity className="w-6 h-6" />
+                      </div>
+                    </div>
+
+                    <div className={`p-5 rounded-2xl border flex items-center justify-between ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#0d0d0d]' : 'border-gray-200 bg-white shadow-sm'}`}>
+                      <div className="space-y-1">
+                        <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-450'} font-mono uppercase tracking-wider`}>
+                          Total Paid Transactions
+                        </p>
+                        <h3 className={`text-2xl font-bold tracking-tight text-emerald-500`}>
+                          {baseHistory.length}
+                        </h3>
+                        <p className="text-[10px] text-gray-400">Drawn periods documented</p>
+                      </div>
+                      <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#161616] text-emerald-400' : 'border-gray-200 bg-emerald-50 text-emerald-600'}`}>
+                        <Trophy className="w-6 h-6" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Filter Bar */}
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 mb-6">
+                    <div className="sm:col-span-6 relative">
+                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Search campaign, winner name, or email..."
+                        value={payHistorySearch}
+                        onChange={(e) => setPayHistorySearch(e.target.value)}
+                        className={`w-full py-2.5 pl-10 pr-4 text-xs rounded-xl border font-sans tracking-wide transition-all ${
+                          theme === 'dark'
+                            ? 'bg-[#121212] border-[#1a1a1a] text-white focus:border-amber-500'
+                            : 'bg-white border-gray-200 text-gray-900 focus:border-amber-500'
+                        }`}
+                      />
+                    </div>
+                    <div className="sm:col-span-4">
+                      <select
+                        value={payHistoryCampaignFilter}
+                        onChange={(e) => setPayHistoryCampaignFilter(e.target.value)}
+                        className={`w-full py-2.5 px-3.5 text-xs rounded-xl border font-sans transition-all cursor-pointer ${
+                          theme === 'dark'
+                            ? 'bg-[#121212] border-[#1a1a1a] text-gray-300 focus:border-amber-500'
+                            : 'bg-white border-gray-200 text-gray-700 focus:border-amber-500'
+                        }`}
+                      >
+                        <option value="all">All Campaigns</option>
+                        {participatingCampaignOpts.map(camp => (
+                          <option key={camp.id} value={camp.id}>{camp.title}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <button
+                        onClick={() => setPayHistorySort(prev => prev === 'newest' ? 'oldest' : 'newest')}
+                        className={`w-full py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          theme === 'dark'
+                            ? 'bg-[#121212] border-[#1a1a1a] text-gray-300 hover:text-white'
+                            : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        <ArrowUpDown className="w-3.5 h-3.5" />
+                        Sort: {payHistorySort === 'newest' ? 'Newest' : 'Oldest'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Transactions Grid */}
+                  {filteredPayHistory.length === 0 ? (
+                    <div className={`flex flex-col items-center justify-center p-12 text-center rounded-2xl border ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#0d0d0d]' : 'border-gray-200 bg-white shadow-xs'}`}>
+                      <div className="w-16 h-16 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 mb-4">
+                        <DollarSign className="w-8 h-8" />
+                      </div>
+                      <h4 className={`text-sm font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+                        No transactions recorded
+                      </h4>
+                      <p className="text-xs text-gray-400 mt-1 max-w-xs">
+                        Monthly transactions will automatically register here as soon as draws are completed for your participating campaigns.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className={`overflow-hidden rounded-2xl border ${
+                      theme === 'dark' ? 'border-[#1a1a1a] bg-[#0d0d0d]' : 'border-gray-200 bg-white shadow-sm'
+                    }`}>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className={`border-b text-[10px] font-mono tracking-wider uppercase ${
+                              theme === 'dark' ? 'border-[#1a1a1a] bg-[#121212] text-gray-405 bg-[#0d0d0d]' : 'border-gray-200 bg-gray-50 text-gray-500'
+                            }`}>
+                              <th className={`p-1 font-bold text-center w-12 border-r ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'}`}>SL</th>
+                              <th className={`p-1 font-bold border-r ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'}`}>Winner Name</th>
+                              <th className={`p-1 font-bold border-r ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'}`}>Date</th>
+                              <th className={`p-1 font-bold border-r ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'}`}>Campaign</th>
+                              <th className={`p-1 font-bold border-r ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'}`}>Round</th>
+                              <th className={`p-1 font-bold text-right border-r ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'}`}>Amount</th>
+                              <th className="p-1 font-bold text-center">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className={`divide-y divide-gray-200 dark:divide-[#1a1a1a]`}>
+                            {filteredPayHistory.map((item, index) => (
+                              <tr 
+                                key={item.id}
+                                className={`transition-colors duration-200 text-xs ${
+                                  theme === 'dark' 
+                                    ? 'hover:bg-[#151515]/50' 
+                                    : 'hover:bg-gray-50'
+                                }`}
+                              >
+                                {/* Serial Number */}
+                                <td className={`p-1 text-center font-bold font-mono border-r ${theme === 'dark' ? 'border-[#1a1a1a] text-gray-500' : 'border-gray-200 text-gray-400'}`}>
+                                  {String(index + 1).padStart(2, '0')}
+                                </td>
+                                {/* Winner Name */}
+                                <td className={`p-1 font-bold border-r ${theme === 'dark' ? 'border-[#1a1a1a] text-amber-450' : 'border-gray-200 text-amber-600'} tracking-tight`}>
+                                  {item.winnerName || 'Pending Draw'}
+                                </td>
+                                {/* Date */}
+                                <td className={`p-1 font-medium border-r ${theme === 'dark' ? 'border-[#1a1a1a] text-gray-300' : 'border-gray-200 text-gray-700'}`}>
+                                  {formatDateShort(item.date)}
+                                </td>
+                                {/* Campaign Name */}
+                                <td className={`p-1 font-bold border-r ${theme === 'dark' ? 'border-[#1a1a1a] text-white' : 'border-gray-200 text-gray-900'} uppercase tracking-tight`}>
+                                  {item.campaignTitle}
+                                </td>
+                                {/* Round Info */}
+                                <td className={`p-1 font-mono font-bold border-r ${theme === 'dark' ? 'border-[#1a1a1a] text-neutral-400' : 'border-gray-200 text-gray-500'}`}>
+                                  Round #{item.roundMonthNum}
+                                </td>
+                                {/* Amount */}
+                                <td className={`p-1 font-extrabold text-right text-amber-500 font-sans text-sm border-r ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'}`}>
+                                  ৳ {item.amount.toLocaleString()}
+                                </td>
+                                {/* Status Badge */}
+                                <td className="p-1 text-center">
+                                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-mono text-[9px] font-bold uppercase tracking-wider bg-emerald-500/10 border text-emerald-400 ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'}`}>
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                    {item.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-[2px]">
+                  <DrawHistory 
+                    campaigns={displayedCampaigns}
+                    theme={theme}
+                    initialCampaignId={historyFilterCampaignId}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ROADMAP VIEW */}
         {activeTab === 'roadmap' && roadmapCampaign && (
@@ -1548,7 +2066,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
                 campaign={roadmapCampaign} 
                 recentlyDrawnMonth={recentlyDrawnMonth} 
                 onBack={() => { setRoadmapCampaign(null); setRecentlyDrawnMonth(null); setActiveTab('campaigns'); }} 
-                onNavigateToHistory={() => setActiveTab('history')}
+                onNavigateToHistory={() => { setActiveTab('history_logs'); setHistoryLogTab('draw_history'); }}
                 onNavigateToAchievements={() => setActiveTab('achievements')}
                 theme={theme}
                 availableUsers={availableUsers}
@@ -1580,6 +2098,25 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
           </div>
         )}
 
+        {/* MANUAL WINNER ENTRY MODAL */}
+        {manualEntryCampaignTarget && (
+          <ManualWinnerModal
+            isOpen={true}
+            onClose={() => setManualEntryCampaignTarget(null)}
+            campaign={manualEntryCampaignTarget}
+            availableUsers={availableUsers}
+            onDrawCompleted={async (winners) => {
+              const pendingDraw = manualEntryCampaignTarget.monthlyDraws?.find(d => d.status === 'pending');
+              if (pendingDraw) {
+                await handleDrawMonthWinner(manualEntryCampaignTarget.id, pendingDraw.monthNumber, winners);
+                showSuccessAlert('Manual winner entry updated successfully!');
+              }
+              setManualEntryCampaignTarget(null);
+            }}
+            theme={theme}
+          />
+        )}
+
       </main>
 
       {/* DELETE CONFIRM MODAL */}
@@ -1607,6 +2144,8 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
         availableUsers={availableUsers}
         editMonthlyAmount={editMonthlyAmount}
         setEditMonthlyAmount={setEditMonthlyAmount}
+        editCampaignDrawType={editCampaignDrawType}
+        setEditCampaignDrawType={setEditCampaignDrawType}
         editMonthlyDrawDate={editMonthlyDrawDate}
         setEditMonthlyDrawDate={setEditMonthlyDrawDate}
         editTotalMonths={editTotalMonths}
@@ -1637,6 +2176,8 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
         availableUsers={availableUsers}
         newMonthlyAmount={monthlyAmount.toString()}
         setNewMonthlyAmount={(val) => setMonthlyAmount(Number(val))}
+        newCampaignDrawType={campaignDrawType}
+        setNewCampaignDrawType={setCampaignDrawType}
         newMonthlyDrawDate={monthlyDrawDate}
         setNewMonthlyDrawDate={setMonthlyDrawDate}
         newTotalMonths={totalMonthsInput}

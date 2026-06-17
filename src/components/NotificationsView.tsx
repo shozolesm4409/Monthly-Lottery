@@ -26,16 +26,18 @@ import {
 
 interface NotificationsViewProps {
   theme: 'dark' | 'light';
-  userEmail: string;
+  userId: string;
   activePanelId?: string;
   campaigns?: any[];
+  isSuperAdmin?: boolean;
 }
 
 export default function NotificationsView({ 
   theme, 
-  userEmail,
+  userId,
   activePanelId = 'default',
-  campaigns = []
+  campaigns = [],
+  isSuperAdmin = false
 }: NotificationsViewProps) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,7 +56,7 @@ export default function NotificationsView({
   });
 
   useEffect(() => {
-    if (!userEmail) return;
+    if (!userId) return;
 
     // FIRESTORE INDEX WORKAROUND:
     // We remove the 'orderBy' clause from the Firestore query to avoid requiring 
@@ -63,7 +65,7 @@ export default function NotificationsView({
     // manual index management.
     const q = query(
       collection(db, 'notifications'),
-      where('userId', '==', userEmail),
+      where('userId', '==', userId),
       limit(100) // Limit to latest 100 to keep client-side sorting fast
     );
 
@@ -84,7 +86,7 @@ export default function NotificationsView({
     });
 
     return () => unsubscribe();
-  }, [userEmail]);
+  }, [userId]);
 
   const markAsRead = async (id: string) => {
     try {
@@ -103,14 +105,6 @@ export default function NotificationsView({
       batch.update(doc(db, 'notifications', n.id), { read: true });
     });
     await batch.commit();
-  };
-
-  const deleteNotification = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'notifications', id));
-    } catch (err) {
-      console.error('Failed to delete notification:', err);
-    }
   };
 
   return (
@@ -197,12 +191,6 @@ export default function NotificationsView({
                        <h4 className={`text-sm font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'} leading-none`}>
                         {n.title}
                       </h4>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
-                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-rose-500/10 hover:text-rose-500 transition-all text-gray-500"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
                     </div>
                     
                     <p className={`text-xs mt-1.5 leading-relaxed ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>

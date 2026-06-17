@@ -66,7 +66,7 @@ interface AdminSidebarProps {
   theme: 'dark' | 'light';
   activeTab: string;
   setActiveTab: (tab: any) => void;
-  hasVisibility: (menuKey: 'dashboard' | 'profile' | 'campaigns' | 'users' | 'approve' | 'history' | 'permissions' | 'achievements' | 'notifications' | 'panels') => boolean;
+  hasVisibility: (menuKey: 'dashboard' | 'profile' | 'campaigns' | 'users' | 'approve' | 'history' | 'permissions' | 'achievements' | 'notifications' | 'panels' | 'pay_history') => boolean;
   user: any;
   handleSignOut: () => void;
   mobileSidebarOpen: boolean;
@@ -122,7 +122,7 @@ export default function AdminSidebar({
         {/* LEFT COLUMN: Panel Icon Strip (Covers the red marked area in uploaded graphic) */}
         {showIconbar && (
           <div className={`w-14 shrink-0 flex flex-col items-center justify-between py-4 border-r ${
-            theme === 'dark' ? 'bg-[#060606] border-[#161616]' : 'bg-gray-50 border-gray-150'
+            theme === 'dark' ? 'bg-[#060606] border-[#1a1a1a]' : 'bg-gray-50 border-gray-200'
           }`}>
           <div className="flex flex-col items-center gap-4 w-full">
             {/* Top decorative badge */}
@@ -155,7 +155,7 @@ export default function AdminSidebar({
                         isActive
                           ? 'bg-amber-500 text-black rounded-[12px] font-black'
                           : theme === 'dark'
-                            ? 'bg-[#151515] text-gray-400 hover:bg-[#202020] hover:text-white hover:rounded-[12px] border border-[#222]'
+                            ? 'bg-[#151515] text-gray-400 hover:bg-[#202020] hover:text-white hover:rounded-[12px] border border-[#1a1a1a]'
                             : 'bg-white text-gray-600 hover:bg-gray-100 hover:text-gray-900 hover:rounded-[12px] border border-gray-200'
                       }`}
                       title={p.name}
@@ -257,19 +257,7 @@ export default function AdminSidebar({
                 </button>
               )}
 
-              {hasVisibility('approve') && (
-                <button
-                  onClick={() => setActiveTab('approve')}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all ${
-                    activeTab === 'approve'
-                      ? 'bg-amber-500 text-black shadow-md shadow-amber-500/10'
-                      : theme === 'dark' ? 'hover:bg-[#161616] text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-900 border-transparent hover:border-gray-200'
-                  }`}
-                >
-                  <ShieldCheck className="w-4 h-4 shrink-0" />
-                  Approved User
-                </button>
-              )}
+
 
               {hasVisibility('panels') && (
                 <button
@@ -298,6 +286,21 @@ export default function AdminSidebar({
                 >
                   <User className="w-4 h-4 shrink-0" />
                   My Profile
+                </button>
+              )}
+
+              {(hasVisibility('history') || hasVisibility('pay_history')) && (
+                <button
+                  id="tab-history-logs"
+                  onClick={() => setActiveTab('history_logs')}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all ${
+                    activeTab === 'history_logs'
+                      ? 'bg-amber-500 text-black shadow-md shadow-amber-500/10 font-bold'
+                      : theme === 'dark' ? 'hover:bg-[#161616] text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-900 border-transparent hover:border-gray-200'
+                  }`}
+                >
+                  <History className="w-4 h-4 shrink-0" />
+                  History Logs
                 </button>
               )}
 
@@ -346,20 +349,7 @@ export default function AdminSidebar({
                 </button>
               )}
 
-              {hasVisibility('history') && (
-                <button
-                  id="tab-draw-history"
-                  onClick={() => setActiveTab('history')}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all ${
-                    activeTab === 'history'
-                      ? 'bg-amber-500 text-black shadow-md shadow-amber-500/10'
-                      : theme === 'dark' ? 'hover:bg-[#161616] text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-900 border-transparent hover:border-gray-200'
-                  }`}
-                >
-                  <History className="w-4 h-4 shrink-0" />
-                  Draw History
-                </button>
-              )}
+              {/* Draw History removed from sidebar */}
             </nav>
           </div>
 
@@ -426,7 +416,7 @@ export default function AdminSidebar({
               {/* MOBILE LEFT COLUMN: Panel Icon Strip */}
               {showIconbar && (
                 <div className={`w-14 shrink-0 flex flex-col items-center justify-between py-4 border-r ${
-                  theme === 'dark' ? 'bg-[#060606] border-[#161616]' : 'bg-gray-50 border-gray-150'
+                  theme === 'dark' ? 'bg-[#060606] border-[#1a1a1a]' : 'bg-gray-50 border-gray-200'
                 }`}>
                   <div className="flex flex-col items-center gap-4 w-full">
                     {/* Top decorative badge */}
@@ -462,7 +452,7 @@ export default function AdminSidebar({
                                 isActive
                                   ? 'bg-amber-500 text-black rounded-[12px] font-black'
                                   : theme === 'dark'
-                                    ? 'bg-[#151515] text-gray-400 hover:bg-[#202020] hover:text-white hover:rounded-[12px] border border-[#222]'
+                                    ? 'bg-[#151515] text-gray-400 hover:bg-[#202020] hover:text-white hover:rounded-[12px] border border-[#1a1a1a]'
                                     : 'bg-white text-gray-600 hover:bg-gray-100 hover:text-gray-900 hover:rounded-[12px] border border-gray-200'
                               }`}
                               title={p.name}
@@ -559,17 +549,7 @@ export default function AdminSidebar({
                       </button>
                     )}
 
-                    {hasVisibility('approve') && (
-                      <button
-                        onClick={() => { setActiveTab('approve'); setMobileSidebarOpen(false); }}
-                        className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all ${
-                          activeTab === 'approve' ? 'bg-amber-500 text-black' : theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-                        }`}
-                      >
-                        <ShieldCheck className="w-4 h-4 shrink-0" />
-                        Approved User
-                      </button>
-                    )}
+
 
                     {hasVisibility('panels') && (
                       <button
@@ -592,6 +572,18 @@ export default function AdminSidebar({
                       >
                         <User className="w-4 h-4 shrink-0" />
                         My Profile
+                      </button>
+                    )}
+
+                    {(hasVisibility('history') || hasVisibility('pay_history')) && (
+                      <button
+                        onClick={() => { setActiveTab('history_logs'); setMobileSidebarOpen(false); }}
+                        className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all ${
+                          activeTab === 'history_logs' ? 'bg-amber-500 text-black font-bold' : theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                        }`}
+                      >
+                        <History className="w-4 h-4 shrink-0" />
+                        History Logs
                       </button>
                     )}
 
@@ -631,17 +623,7 @@ export default function AdminSidebar({
                       </button>
                     )}
 
-                    {hasVisibility('history') && (
-                      <button
-                        onClick={() => { setActiveTab('history'); setMobileSidebarOpen(false); }}
-                        className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all ${
-                          activeTab === 'history' ? 'bg-amber-500 text-black' : theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-                        }`}
-                      >
-                        <History className="w-4 h-4 shrink-0" />
-                        Draw History
-                      </button>
-                    )}
+                    {/* Draw History removed from mobile drawer */}
                   </nav>
                 </div>
 

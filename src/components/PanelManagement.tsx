@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   collection, 
   doc, 
   setDoc, 
   deleteDoc, 
-  updateDoc 
+  updateDoc,
+  query,
+  onSnapshot,
+  limit,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
@@ -18,9 +22,10 @@ import {
   Layout, 
   Info, 
   FileText,
-  AlertTriangle
+  AlertTriangle,
+  Bell
 } from 'lucide-react';
-import { DashboardPanel } from '../types';
+import { DashboardPanel, AppNotification } from '../types';
 import { PanelIconMap } from './admin/AdminSidebar';
 
 interface PanelManagementProps {
@@ -73,9 +78,33 @@ export default function PanelManagement({
   const [editDesc, setEditDesc] = useState('');
   const [editIcon, setEditIcon] = useState('');
   
+  // Tab state
+  const [mgmtTab, setMgmtTab] = useState<'panels' | 'notifications'>('panels');
+
+  // Notifications state
+  const [allNotifications, setAllNotifications] = useState<AppNotification[]>([]);
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+  
   // Feedback status
   const [status, setStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [actionProcessing, setActionProcessing] = useState(false);
+
+  useEffect(() => {
+    if (mgmtTab !== 'notifications') return;
+    const q = query(
+      collection(db, 'notifications'),
+      limit(500)
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: AppNotification[] = [];
+      snapshot.forEach(docSnap => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as AppNotification);
+      });
+      list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      setAllNotifications(list);
+    });
+    return () => unsubscribe();
+  }, [mgmtTab]);
 
   const showFeedback = (type: 'success' | 'error', text: string) => {
     setStatus({ type, text });
@@ -167,6 +196,39 @@ export default function PanelManagement({
     }
   };
 
+  const handleDeleteNotification = async (notificationId: string) => {
+    if (!window.confirm("Are you sure you want to permanently delete this notification?")) return;
+    
+    setActionProcessing(true);
+    try {
+      await deleteDoc(doc(db, 'notifications', notificationId));
+      showFeedback('success', 'Notification deleted successfully.');
+    } catch (err: any) {
+      console.error('Failed to delete notification:', err);
+      showFeedback('error', `Failed to delete notification: ${err.message || err}`);
+    } finally {
+      setActionProcessing(false);
+    }
+  };
+
+  const handleDeleteAllNotifications = async () => {
+    setActionProcessing(true);
+    try {
+      const batch = writeBatch(db);
+      allNotifications.forEach(n => {
+        batch.delete(doc(db, 'notifications', n.id));
+      });
+      await batch.commit();
+      showFeedback('success', 'All available notifications have been deleted.');
+      setShowDeleteAllConfirm(false);
+    } catch (err: any) {
+      console.error('Failed to delete all notifications:', err);
+      showFeedback('error', `Failed to delete all notifications: ${err.message || err}`);
+    } finally {
+      setActionProcessing(false);
+    }
+  };
+
   const startEdit = (p: DashboardPanel) => {
     setEditingPanelId(p.id);
     setEditName(p.name);
@@ -184,16 +246,43 @@ export default function PanelManagement({
         </div>
         <div className="flex items-center justify-between">
           <h2 className={`text-2xl font-black tracking-tight ${theme === 'dark' ? 'text-white' : 'text-gray-900'} font-sans`}>
-            Panel Management
+            {mgmtTab === 'panels' ? 'Panel Management' : 'Notifications Management'}
           </h2>
-          <button
-            onClick={() => setIsCreating(!isCreating)}
-            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black rounded-xl text-xs font-bold shadow flex items-center gap-1.5 transition-all cursor-pointer"
-          >
-            {isCreating ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-            {isCreating ? 'Cancel' : 'Create Panel'}
-          </button>
+          {mgmtTab === 'panels' && (
+            <button
+              onClick={() => setIsCreating(!isCreating)}
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black rounded-xl text-xs font-bold shadow flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              {isCreating ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+              {isCreating ? 'Cancel' : 'Create Panel'}
+            </button>
+          )}
         </div>
+      </div>
+
+      {/* Tabs */}
+      <div className={`flex items-center gap-2 border-b ${theme === 'dark' ? 'border-[#1a1a1a]' : 'border-gray-200'} pb-[-1px]`}>
+        <button
+          onClick={() => setMgmtTab('panels')}
+          className={`px-4 py-3 text-sm font-bold border-b-2 transition-colors ${
+            mgmtTab === 'panels' 
+              ? 'border-amber-500 text-amber-500' 
+              : `border-transparent ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`
+          }`}
+        >
+          Panels
+        </button>
+        <button
+          onClick={() => setMgmtTab('notifications')}
+          className={`px-4 py-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${
+            mgmtTab === 'notifications' 
+              ? 'border-amber-500 text-amber-500' 
+              : `border-transparent ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`
+          }`}
+        >
+          <Bell className="w-4 h-4" />
+          Notifications Database
+        </button>
       </div>
 
       {/* Operation Feedback */}
@@ -214,8 +303,10 @@ export default function PanelManagement({
         )}
       </AnimatePresence>
 
-      {/* Create New Panel Form Panel */}
-      <AnimatePresence>
+      {mgmtTab === 'panels' && (
+        <>
+          {/* Create New Panel Form Panel */}
+          <AnimatePresence>
         {isCreating && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
@@ -224,7 +315,7 @@ export default function PanelManagement({
             className="overflow-hidden"
           >
             <form onSubmit={handleCreate} className={`p-5 rounded-2xl border space-y-4 ${
-              theme === 'dark' ? 'bg-[#080808] border-[#181818]' : 'bg-gray-55/80 border-gray-150'
+              theme === 'dark' ? 'bg-[#080808] border-[#1a1a1a]' : 'bg-gray-55/80 border-gray-200'
             }`}>
               <h3 className={`text-sm font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
                 Create Dashboard Panel
@@ -264,7 +355,7 @@ export default function PanelManagement({
                 {/* ICON PICKER SELECTION CONTAINER */}
                 <div className="space-y-1.5 col-span-1 md:col-span-2">
                   <label className="block text-[10px] font-bold uppercase text-gray-400 font-sans">Select Panel Icon</label>
-                  <div className="flex flex-wrap gap-2 p-3 rounded-xl border border-dashed border-gray-200 dark:border-[#222] bg-gray-50/50 dark:bg-black/20">
+                  <div className="flex flex-wrap gap-2 p-3 rounded-xl border border-dashed border-gray-200 dark:border-[#1a1a1a] bg-gray-50/50 dark:bg-black/20">
                     {/* Option for Text Initials */}
                     <button
                       type="button"
@@ -273,7 +364,7 @@ export default function PanelManagement({
                         selectedIcon === ''
                           ? 'bg-amber-500 text-black border-amber-500 font-black'
                           : theme === 'dark'
-                            ? 'bg-[#141414] border-[#252525] text-gray-400 hover:text-white'
+                            ? 'bg-[#141414] border-[#1a1a1a] text-gray-400 hover:text-white'
                             : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
                       }`}
                     >
@@ -291,7 +382,7 @@ export default function PanelManagement({
                             selectedIcon === iconName
                               ? 'bg-amber-500 text-black border-amber-500'
                               : theme === 'dark'
-                                ? 'bg-[#141414] border-[#252525] text-gray-400 hover:text-white hover:bg-[#1c1c1c]'
+                                ? 'bg-[#141414] border-[#1a1a1a] text-gray-400 hover:text-white hover:bg-[#1c1c1c]'
                                 : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
                           }`}
                           title={iconName}
@@ -309,7 +400,7 @@ export default function PanelManagement({
                   type="button"
                   onClick={() => setIsCreating(false)}
                   className={`px-3 py-1.5 text-xs rounded-xl border font-bold transition-all cursor-pointer ${
-                    theme === 'dark' ? 'border-[#222] text-gray-400 hover:text-white hover:bg-[#121212]' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    theme === 'dark' ? 'border-[#1a1a1a] text-gray-400 hover:text-white hover:bg-[#121212]' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                   }`}
                 >
                   Cancel
@@ -329,7 +420,7 @@ export default function PanelManagement({
 
       {/* Panels Lists Layout */}
       <div className={`p-4 rounded-2xl border ${
-        theme === 'dark' ? 'bg-[#080808] border-[#181818]' : 'bg-gray-50/80 border-gray-150'
+        theme === 'dark' ? 'bg-[#080808] border-[#1a1a1a]' : 'bg-gray-50/80 border-gray-200'
       }`}>
         <div className="flex items-center gap-2 mb-4">
           <Layout className="w-4 h-4 text-emerald-500 shrink-0" />
@@ -354,7 +445,7 @@ export default function PanelManagement({
                       ? 'bg-amber-500/5 border-amber-500/30'
                       : 'bg-amber-500/5 border-amber-500/20'
                     : theme === 'dark'
-                      ? 'bg-[#101010] border-[#1e1e1e] hover:border-[#2a2a2a]'
+                      ? 'bg-[#101010] border-[#1a1a1a] hover:border-[#2a2a2a]'
                       : 'bg-white border-gray-200 hover:bg-gray-50/50'
                 }`}
               >
@@ -368,7 +459,7 @@ export default function PanelManagement({
                           value={editName}
                           onChange={(e) => setEditName(e.target.value)}
                           className={`w-full px-2.5 py-1.5 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-amber-500 font-semibold ${
-                            theme === 'dark' ? 'bg-[#161616] border-[#222] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
+                            theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
                           }`}
                         />
                       </div>
@@ -379,7 +470,7 @@ export default function PanelManagement({
                           value={editDesc}
                           onChange={(e) => setEditDesc(e.target.value)}
                           className={`w-full px-2.5 py-1.5 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-amber-500 ${
-                            theme === 'dark' ? 'bg-[#161616] border-[#222] text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-700'
+                            theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-700'
                           }`}
                         />
                       </div>
@@ -387,7 +478,7 @@ export default function PanelManagement({
                       {/* EDIT MODE ICON PICKER SELECTION CONTAINER */}
                       <div className="space-y-1 col-span-1 md:col-span-2">
                         <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Select Panel Icon</label>
-                        <div className="flex flex-wrap gap-1.5 p-2 rounded-lg border border-gray-200 dark:border-[#222] bg-[#0c0c0c]/10">
+                        <div className="flex flex-wrap gap-1.5 p-2 rounded-lg border border-gray-200 dark:border-[#1a1a1a] bg-[#0c0c0c]/10">
                           {/* Option for Text Initials */}
                           <button
                             type="button"
@@ -426,12 +517,12 @@ export default function PanelManagement({
                         </div>
                       </div>
                     </div>
-                    <div className="flex justify-end gap-2 pt-1 border-t border-dashed border-gray-200 dark:border-[#1e1e1e]">
+                    <div className="flex justify-end gap-2 pt-1 border-t border-dashed border-gray-200 dark:border-[#1a1a1a]">
                       <button
                         type="button"
                         onClick={() => setEditingPanelId(null)}
                         className={`p-1 px-2.5 text-[10px] font-bold rounded flex items-center gap-1 border ${
-                          theme === 'dark' ? 'border-[#222] text-gray-400 hover:text-white hover:bg-[#121212]' : 'border-gray-200 text-gray-500'
+                          theme === 'dark' ? 'border-[#1a1a1a] text-gray-400 hover:text-white hover:bg-[#121212]' : 'border-gray-200 text-gray-500'
                         }`}
                       >
                         <X className="w-3 h-3" /> Cancel
@@ -490,7 +581,7 @@ export default function PanelManagement({
                         className={`px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider rounded-lg border transition-all cursor-pointer ${
                           isActive 
                             ? 'bg-amber-500/10 text-amber-500 border-amber-500/15' 
-                            : theme === 'dark' ? 'border-[#222] text-gray-400 hover:text-white hover:bg-[#121212]' : 'border-gray-200 text-gray-600 hover:bg-gray-100'
+                            : theme === 'dark' ? 'border-[#1a1a1a] text-gray-400 hover:text-white hover:bg-[#121212]' : 'border-gray-200 text-gray-600 hover:bg-gray-100'
                         }`}
                       >
                         {isActive ? 'Active' : 'Select'}
@@ -498,7 +589,7 @@ export default function PanelManagement({
                       <button
                         onClick={() => startEdit(p)}
                         className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
-                          theme === 'dark' ? 'bg-[#151515] border-[#252525] hover:border-amber-500/20 text-gray-400 hover:text-amber-500' : 'bg-gray-50 border-gray-200 text-gray-500 hover:text-amber-500 hover:bg-gray-100'
+                          theme === 'dark' ? 'bg-[#151515] border-[#1a1a1a] hover:border-amber-500/20 text-gray-400 hover:text-amber-500' : 'bg-gray-50 border-gray-200 text-gray-500 hover:text-amber-500 hover:bg-gray-100'
                         }`}
                         title="Edit Details"
                       >
@@ -508,7 +599,7 @@ export default function PanelManagement({
                         onClick={() => handleDelete(p.id, p.name)}
                         disabled={isDefault}
                         className={`p-1.5 rounded-lg border transition-all cursor-pointer disabled:opacity-30 ${
-                          theme === 'dark' ? 'bg-[#151515] border-[#252525] hover:border-rose-500/20 text-gray-400 hover:text-rose-500' : 'bg-gray-50 border-gray-200 text-gray-500 hover:text-rose-500 hover:bg-gray-100'
+                          theme === 'dark' ? 'bg-[#151515] border-[#1a1a1a] hover:border-rose-500/20 text-gray-400 hover:text-rose-500' : 'bg-gray-50 border-gray-200 text-gray-500 hover:text-rose-500 hover:bg-gray-100'
                         }`}
                         title="Remove Panel"
                       >
@@ -522,6 +613,139 @@ export default function PanelManagement({
           })}
         </div>
       </div>
+      </>
+      )}
+
+      {mgmtTab === 'notifications' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className={`text-lg font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                Database Notifications
+              </h3>
+              <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                Manage and permanently delete notifications for all users.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className={`px-3 py-1.5 rounded-lg text-xs font-bold ${theme === 'dark' ? 'bg-[#1a1a1a] text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                Total: {allNotifications.length}
+              </div>
+              {allNotifications.length > 0 && (
+                <button
+                  onClick={() => setShowDeleteAllConfirm(true)}
+                  disabled={actionProcessing}
+                  className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all disabled:opacity-50"
+                  title="Delete All Notifications"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete All
+                </button>
+              )}
+            </div>
+          </div>
+
+          {allNotifications.length === 0 ? (
+            <div className={`p-12 text-center rounded-2xl border border-dashed ${theme === 'dark' ? 'border-[#222] bg-[#0d0d0d]' : 'border-gray-200 bg-gray-50'}`}>
+              <Bell className="w-8 h-8 text-gray-400 mx-auto mb-3" />
+              <p className="text-sm font-bold text-gray-500">No notifications found in database</p>
+            </div>
+          ) : (
+            <div className={`border rounded-2xl overflow-hidden ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#0d0d0d]' : 'border-gray-200 bg-white shadow-sm'}`}>
+              <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead className="sticky top-0 z-10">
+                    <tr className={`border-b text-[10px] uppercase tracking-wider font-bold ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#121212] text-gray-400' : 'border-gray-200 bg-gray-50 text-gray-500'}`}>
+                      <th className="p-3">ID / User</th>
+                      <th className="p-3">Title</th>
+                      <th className="p-3">Message</th>
+                      <th className="p-3">Date</th>
+                      <th className="p-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-[#1a1a1a]">
+                    {allNotifications.map(n => (
+                      <tr key={n.id} className={`text-xs transition-colors ${theme === 'dark' ? 'hover:bg-[#121212] text-gray-300' : 'hover:bg-gray-50 text-gray-700'}`}>
+                        <td className="p-3 font-mono opacity-70 truncate max-w-[120px]" title={`ID: ${n.id}\nUser: ${n.userId}`}>
+                          <div className="text-[9px] text-gray-500">{n.id}</div>
+                          <div>{n.userId}</div>
+                        </td>
+                        <td className="p-3 font-bold">{n.title}</td>
+                        <td className="p-3 truncate max-w-[200px]" title={n.message}>{n.message}</td>
+                        <td className="p-3 opacity-70">
+                          {n.createdAt ? new Date(n.createdAt).toLocaleDateString() : 'N/A'}
+                        </td>
+                        <td className="p-3 text-right">
+                          <button
+                            onClick={() => handleDeleteNotification(n.id)}
+                            className={`p-1.5 inline-flex items-center justify-center rounded-lg border transition-all ${
+                              theme === 'dark' ? 'bg-[#151515] border-[#1a1a1a] hover:border-rose-500/20 text-gray-400 hover:text-rose-500' : 'bg-gray-50 border-gray-200 text-gray-500 hover:text-rose-500 hover:bg-gray-100'
+                            }`}
+                            title="Permanently Delete Notification"
+                            disabled={actionProcessing}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Delete All Confirm Popup */}
+      <AnimatePresence>
+        {showDeleteAllConfirm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className={`w-full max-w-sm rounded-2xl shadow-xl border overflow-hidden ${
+                theme === 'dark' ? 'bg-[#121212] border-[#1a1a1a]' : 'bg-white border-gray-200'
+              }`}
+            >
+              <div className="p-6 text-center space-y-4">
+                <div className="w-12 h-12 rounded-full bg-rose-500/10 flex items-center justify-center text-rose-500 mx-auto">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className={`text-lg font-black ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                    Delete All Notifications?
+                  </h3>
+                  <p className={`text-xs mt-2 leading-relaxed ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Are you sure you want to permanently delete all {allNotifications.length} notifications from the database? This action cannot be undone.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    onClick={() => setShowDeleteAllConfirm(false)}
+                    disabled={actionProcessing}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-bold border transition-colors ${
+                      theme === 'dark' 
+                        ? 'border-[#333] text-gray-300 hover:bg-[#333]' 
+                        : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDeleteAllNotifications}
+                    disabled={actionProcessing}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {actionProcessing ? 'Deleting...' : 'Delete All'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

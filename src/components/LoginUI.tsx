@@ -156,7 +156,7 @@ export default function LoginUI({ onSuccess, theme = 'dark', toggleTheme, extern
   };
 
   return (
-    <div id="login-container" className={`min-h-screen flex items-center justify-center ${theme === 'dark' ? 'bg-[#050505] text-[#e0e0e0]' : 'bg-gray-50 text-gray-800'} p-4 relative overflow-hidden select-none transition-colors duration-300`}>
+    <div id="login-container" className={`min-h-screen flex items-center justify-center ${theme === 'dark' ? 'bg-[#050505] text-[#e0e0e0]' : 'bg-gray-50 text-gray-800'} p-4 relative overflow-hidden transition-colors duration-300`}>
       {/* Theme Toggle Button */}
       <button
         id="theme-toggle-btn"
@@ -363,8 +363,8 @@ export default function LoginUI({ onSuccess, theme = 'dark', toggleTheme, extern
             disabled={loading}
             className={`w-full ${
               theme === 'dark' 
-                ? 'bg-amber-550 hover:bg-amber-400 active:bg-amber-600 text-black shadow-amber-500/10 hover:shadow-amber-500/20' 
-                : 'bg-amber-605 hover:bg-amber-550 active:bg-amber-700 text-black font-semibold shadow-amber-600/15 hover:shadow-amber-600/25'
+                ? 'bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-black shadow-amber-500/10 hover:shadow-amber-500/20' 
+                : 'bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-black font-semibold shadow-amber-600/15 hover:shadow-amber-600/25'
             } font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-lg text-xs uppercase tracking-wider`}
           >
             {loading ? (
