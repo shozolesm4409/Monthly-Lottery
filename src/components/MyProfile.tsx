@@ -30,47 +30,52 @@ import {
   Edit2,
   Phone
 } from 'lucide-react';
-import { ManagedUser } from '../types';
+import { ManagedUser, DashboardPanel, LotteryCampaign } from '../types';
 
 interface MyProfileProps {
   theme: 'dark' | 'light';
   setActionError: (msg: string | null) => void;
   setActionSuccess: (msg: string | null) => void;
+  user?: ManagedUser;
+  panels?: DashboardPanel[];
+  campaigns?: LotteryCampaign[];
 }
 
-export default function MyProfile({ theme, setActionError, setActionSuccess }: MyProfileProps) {
-  const user = auth.currentUser;
+export default function MyProfile({ theme, setActionError, setActionSuccess, user: passedUser, panels = [], campaigns = [] }: MyProfileProps) {
+  const authUser = auth.currentUser;
   const isDark = theme === 'dark';
+  const isImpersonating = !!passedUser;
   
-  // Local profile states
-  const [displayName, setDisplayName] = useState(user?.displayName || '');
+  const [dbUser, setDbUser] = useState<ManagedUser | null>(passedUser || null);
+  const [loadingDb, setLoadingDb] = useState(!passedUser);
+
+  const [displayName, setDisplayName] = useState(passedUser?.name || authUser?.displayName || '');
+  const [photoURL, setPhotoURL] = useState(passedUser?.photoURL || authUser?.photoURL || '');
+  const [phone, setPhone] = useState(passedUser?.phone || '');
+  
   const [copiedUid, setCopiedUid] = useState(false);
   const [saving, setSaving] = useState(false);
   
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [updatingPassword, setUpdatingPassword] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [photoURL, setPhotoURL] = useState(user?.photoURL || '');
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [phone, setPhone] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
-
-  // Database record state
-  const [dbUser, setDbUser] = useState<ManagedUser | null>(null);
-  const [loadingDb, setLoadingDb] = useState(true);
 
   useEffect(() => {
     async function fetchDbUser() {
-      if (!user?.uid) {
+      const uid = passedUser?.id || authUser?.uid;
+      if (!uid) {
         setLoadingDb(false);
         return;
       }
       try {
-        const docRef = doc(db, 'users', user.uid);
+        const docRef = doc(db, 'users', uid);
         const docSnap = await (async () => {
-           // Fallback attempt if exact ID doesn't work (though it should)
-           const q = query(collection(db, 'users'), where('email', '==', user.email));
+           const q = query(collection(db, 'users'), where('email', '==', passedUser?.email || authUser?.email));
            const snap = await getDocs(q);
            return snap.empty ? null : snap.docs[0];
         })();
@@ -89,11 +94,11 @@ export default function MyProfile({ theme, setActionError, setActionSuccess }: M
       }
     }
     fetchDbUser();
-  }, [user?.uid, user?.email]);
+  }, [passedUser?.id, authUser?.uid, passedUser?.email, authUser?.email]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || isImpersonating) return;
 
     if (file.size > 2 * 1024 * 1024) {
       setActionError('Image size exceeds 2MB limit.');
@@ -105,7 +110,6 @@ export default function MyProfile({ theme, setActionError, setActionSuccess }: M
     setActionSuccess(null);
 
     try {
-      // Step 1: Read the file as Data URL
       const reader = new FileReader();
       const imageData = await new Promise<string>((resolve, reject) => {
         reader.onload = (e) => resolve(e.target?.result as string);
@@ -113,7 +117,6 @@ export default function MyProfile({ theme, setActionError, setActionSuccess }: M
         reader.readAsDataURL(file);
       });
 
-      // Step 2: Load into image for resizing
       const img = new Image();
       await new Promise((resolve, reject) => {
         img.onload = resolve;
@@ -121,9 +124,8 @@ export default function MyProfile({ theme, setActionError, setActionSuccess }: M
         img.src = imageData;
       });
 
-      // Step 3: Resize with Canvas
       const canvas = document.createElement('canvas');
-      const MAX_SIZE = 400; // Standard profile size
+      const MAX_SIZE = 400; 
       let width = img.width;
       let height = img.height;
 
@@ -144,53 +146,40 @@ export default function MyProfile({ theme, setActionError, setActionSuccess }: M
       ctx?.drawImage(img, 0, 0, width, height);
 
       const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-      
-      // Update local state immediately for instant feedback
       setPhotoURL(dataUrl);
 
-      if (user) {
+      if (authUser) {
         let finalUrl = dataUrl;
-        
         try {
-          // Attempt Storage Upload with a tight timeout to fallback to Data URI fast if needed
-          const storageRef = ref(storage, `profile_images/${user.uid}.jpg`);
-          
-          // Use a simple timeout race for the whole storage operation
+          const storageRef = ref(storage, `profile_images/${authUser.uid}.jpg`);
           const uploadTask = uploadString(storageRef, dataUrl, 'data_url');
-          
-          // Wait for upload or fallback
           await Promise.race([
             uploadTask,
             new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
           ]);
-          
           finalUrl = await getDownloadURL(storageRef);
         } catch (storageErr) {
           console.warn("Storage upload failed or timeout, using Data URI:", storageErr);
         }
 
-        // UPDATE EVERYTHING
-        // 1. Auth Profile
         try {
-          await updateProfile(user, { photoURL: finalUrl });
+          await updateProfile(authUser, { photoURL: finalUrl });
         } catch (e) {
           console.warn("Auth update failed (likely too long):", e);
         }
 
-        // 2. Firestore Document (The core state)
-        // This is what the real-time listener in AdminDashboard picks up
-        await setDoc(doc(db, 'users', user.uid), { 
+        await setDoc(doc(db, 'users', authUser.uid), { 
           photoURL: finalUrl,
           lastUpdated: new Date().toISOString()
         }, { merge: true });
         
         setActionSuccess('Profile picture updated successfully.');
-        setPhotoURL(finalUrl); // Final sync
+        setPhotoURL(finalUrl);
       }
     } catch (err: any) {
       console.error("Profile image update error:", err);
       setActionError('Upload failed: ' + (err.message || 'Unknown error'));
-      setPhotoURL(user?.photoURL || '');
+      setPhotoURL(authUser?.photoURL || '');
     } finally {
       setUploadingImage(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -199,7 +188,20 @@ export default function MyProfile({ theme, setActionError, setActionSuccess }: M
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!authUser || isImpersonating) return; 
+
+    // Validate current password with database
+    if (currentPassword !== dbUser?.password) {
+      setActionError('Current password does not match our records.');
+      return;
+    }
+
+    // Validate new password and confirm password match
+    if (newPassword !== confirmPassword) {
+      setActionError('New password and confirm password do not match.');
+      return;
+    }
+
     if (newPassword.length < 6) {
       setActionError('Password must be at least 6 characters.');
       return;
@@ -208,9 +210,11 @@ export default function MyProfile({ theme, setActionError, setActionSuccess }: M
     setActionError(null);
     setActionSuccess(null);
     try {
-      await updatePassword(user, newPassword);
-      await updateDoc(doc(db, 'users', user.uid), { password: newPassword });
+      await updatePassword(authUser, newPassword);
+      await updateDoc(doc(db, 'users', authUser.uid), { password: newPassword });
+      setCurrentPassword('');
       setNewPassword('');
+      setConfirmPassword('');
       setActionSuccess('Password updated successfully.');
     } catch (err: any) {
       console.error(err);
@@ -225,8 +229,9 @@ export default function MyProfile({ theme, setActionError, setActionSuccess }: M
   };
 
   const handleCopyUid = () => {
-    if (user?.uid) {
-      navigator.clipboard.writeText(user.uid);
+    const uid = passedUser?.id || authUser?.uid;
+    if (uid) {
+      navigator.clipboard.writeText(uid);
       setCopiedUid(true);
       setTimeout(() => setCopiedUid(false), 2000);
     }
@@ -234,16 +239,17 @@ export default function MyProfile({ theme, setActionError, setActionSuccess }: M
 
   const handleUpdateProfileData = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (isImpersonating) return;
+    if (!authUser) return;
     setSaving(true);
     setActionError(null);
     setActionSuccess(null);
     try {
-      if (displayName.trim() !== user.displayName) {
-        await updateProfile(user, { displayName: displayName.trim() });
+      if (displayName.trim() !== authUser.displayName) {
+        await updateProfile(authUser, { displayName: displayName.trim() });
       }
 
-      await updateDoc(doc(db, 'users', user.uid), {
+      await updateDoc(doc(db, 'users', authUser.uid), {
         name: displayName.trim(),
         phone: phone.trim()
       });
@@ -261,21 +267,12 @@ export default function MyProfile({ theme, setActionError, setActionSuccess }: M
     }
   };
 
-  const providerId = user?.providerData[0]?.providerId || 'password';
+  const providerId = authUser?.providerData[0]?.providerId || 'password';
   const providerLabel = providerId === 'google.com' ? 'Google OAuth 2.0' : 'Email & Password';
 
-  const isTargetAdmin = user?.email === 'shozolesm4409@gmail.com' || user?.email?.includes('admin');
-  const userRole = dbUser?.role || (isTargetAdmin ? 'Primary Admin' : 'Staff User');
-  const userCampus = dbUser?.campus || 'Dhaka Main Campus';
-  const userPhone = dbUser?.phone || 'N/A';
+  const userRole = dbUser?.role || 'User';
+  const userPhone = phone || 'N/A';
   const userStatus = dbUser?.status || 'Active';
-
-  const avatarInitials = (displayName || user?.email || 'A')
-    .split(' ')
-    .map(n => n[0])
-    .join('')
-    .substring(0, 2)
-    .toUpperCase();
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-20 font-sans">
@@ -290,20 +287,21 @@ export default function MyProfile({ theme, setActionError, setActionSuccess }: M
             : 'bg-white border-gray-200'
         } shadow-lg`}
       >
-        {/* Background Cover */}
-        <div className={`h-32 md:h-40 w-full ${isDark ? 'bg-gradient-to-r from-amber-500/10 via-amber-700/5 to-[#121212]' : 'bg-gradient-to-r from-amber-100 via-amber-50 to-white'} relative`}>
-          <button 
-            onClick={() => setIsEditMode(!isEditMode)}
-            className={`absolute top-4 right-4 px-4 py-1.5 rounded-lg border ${
-              isDark ? 'bg-black/40 border-white/10 text-white hover:bg-black/60' : 'bg-white/60 border-gray-200 text-gray-800 hover:bg-white/80'
-            } backdrop-blur-md text-xs font-bold transition-all flex items-center gap-2 cursor-pointer z-20`}
-          >
-            {isEditMode ? <Check className="w-3.5 h-3.5" /> : <Edit2 className="w-3.5 h-3.5" />}
-            {isEditMode ? 'Finish Editing' : 'Edit Profile'}
-          </button>
+        <div className={`h-24 md:h-32 w-full ${isDark ? 'bg-gradient-to-r from-amber-500/10 via-amber-700/5 to-[#121212]' : 'bg-gradient-to-r from-amber-100 via-amber-50 to-white'} relative`}>
+          {!isImpersonating && (
+             <button 
+              onClick={() => setIsEditMode(!isEditMode)}
+              className={`absolute top-3 right-3 px-3 py-1 rounded-lg border ${
+                isDark ? 'bg-black/40 border-white/10 text-white hover:bg-black/60' : 'bg-white/60 border-gray-200 text-gray-800 hover:bg-white/80'
+              } backdrop-blur-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer z-20`}
+            >
+              {isEditMode ? <Check className="w-3.5 h-3.5" /> : <Edit2 className="w-3.5 h-3.5" />}
+              {isEditMode ? 'Finish Editing' : 'Edit Profile'}
+            </button>
+          )}
         </div>
         
-        <div className="px-4 sm:px-6 pb-6 -mt-16 sm:-mt-20 relative z-10 flex flex-col md:flex-row items-center gap-6">
+        <div className="px-4 sm:px-5 pb-4 -mt-12 sm:-mt-16 relative z-10 flex flex-col md:flex-row items-center gap-4">
           <div className="relative group">
             <input 
               type="file"
@@ -311,25 +309,24 @@ export default function MyProfile({ theme, setActionError, setActionSuccess }: M
               className="hidden"
               ref={fileInputRef}
               onChange={handleImageUpload}
-              disabled={uploadingImage}
+              disabled={uploadingImage || isImpersonating}
             />
             <div 
-              onClick={() => isEditMode && !uploadingImage && fileInputRef.current?.click()}
-              className={`w-28 h-28 sm:w-36 sm:h-36 rounded-full flex items-center justify-center shadow-xl border-4 ${isDark ? 'border-[#0a0a0a] bg-gradient-to-b from-[#2a2a2a] to-[#1a1a1a]' : 'border-white bg-gradient-to-b from-gray-100 to-gray-200'} text-gray-500 text-3xl font-black tracking-wider select-none shrink-0 uppercase transition-all duration-300 relative overflow-hidden ${isEditMode ? 'cursor-pointer' : 'cursor-default'}`}
+              onClick={() => isEditMode && !uploadingImage && !isImpersonating && fileInputRef.current?.click()}
+              className={`w-24 h-24 sm:w-28 sm:h-28 rounded-full flex items-center justify-center shadow-md border-4 ${isDark ? 'border-[#0a0a0a] bg-gradient-to-b from-[#2a2a2a] to-[#1a1a1a]' : 'border-white bg-gradient-to-b from-gray-100 to-gray-200'} text-gray-500 text-2xl font-black tracking-wider select-none shrink-0 uppercase transition-all duration-300 relative overflow-hidden ${isEditMode && !isImpersonating ? 'cursor-pointer' : 'cursor-default'}`}
             >
-              {photoURL || user?.photoURL ? (
+              {photoURL || authUser?.photoURL ? (
                 <img 
-                  src={photoURL || user?.photoURL || ''} 
+                  src={photoURL || authUser?.photoURL || ''} 
                   alt="Profile" 
                   referrerPolicy="no-referrer"
                   className={`w-full h-full object-cover rounded-full ${uploadingImage ? 'opacity-50 blur-sm' : ''}`}
                 />
               ) : (
-                <span className={isDark ? 'text-gray-300' : 'text-gray-500'}>{avatarInitials}</span>
+                <span className={isDark ? 'text-gray-300' : 'text-gray-500'}>{(displayName || 'A').substring(0, 2).toUpperCase()}</span>
               )}
               
-              {/* edit avatar button on hover - only in edit mode */}
-              {isEditMode && (
+              {isEditMode && !isImpersonating && (
                 <div className={`absolute inset-0 rounded-full bg-black/40 flex items-center justify-center transition-opacity backdrop-blur-sm ${uploadingImage ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                   {uploadingImage ? (
                     <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -339,12 +336,8 @@ export default function MyProfile({ theme, setActionError, setActionSuccess }: M
                 </div>
               )}
             </div>
-            {userStatus === 'Active' && (
-               <span className={`absolute bottom-2 right-2 sm:bottom-4 sm:right-4 w-6 h-6 rounded-full bg-emerald-500 border-4 ${isDark ? 'border-[#0a0a0a]' : 'border-white'} flex items-center justify-center z-10`} title="Active Status">
-                 <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse"></span>
-               </span>
-            )}
-            {isEditMode && (
+            
+            {isEditMode && !isImpersonating && (
               <button 
                 onClick={() => !uploadingImage && fileInputRef.current?.click()}
                 className={`absolute -bottom-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-[10px] font-bold shadow-md flex items-center gap-1.5 transition-all w-max z-20 ${
@@ -357,326 +350,409 @@ export default function MyProfile({ theme, setActionError, setActionSuccess }: M
             )}
           </div>
 
-          <div className="text-center md:text-left space-y-2 flex-1 pt-6 sm:pt-16">
-            <div className="flex flex-col sm:flex-row items-center gap-3 justify-center md:justify-start -mt-2">
-              <h2 className={`text-2xl sm:text-3xl font-black tracking-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {displayName || 'Administrator Details'}
+          <div className="text-center md:text-left space-y-1 flex-1 pt-4 sm:pt-14">
+            <div className="flex flex-col sm:flex-row items-center gap-2 justify-center md:justify-start -mt-2">
+              <h2 className={`text-xl sm:text-2xl font-black tracking-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                {displayName}
               </h2>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 text-amber-600 dark:text-amber-500 border border-amber-500/20 rounded-full text-[10px] font-mono font-extrabold uppercase tracking-widest shadow-sm">
-                <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-500 border border-amber-500/20 rounded-full text-[9px] font-mono font-extrabold uppercase tracking-widest shadow-sm">
+                <ShieldCheck className="w-3 h-3 shrink-0" />
                 {userRole}
               </span>
             </div>
 
-            <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'} font-medium max-w-2xl`}>
+            <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'} font-medium max-w-2xl`}>
               Phone Number: <span className={`font-bold ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>{userPhone}</span>.
             </p>
 
-            <div className="flex flex-wrap items-center justify-center md:justify-start gap-5 pt-2 font-mono text-[11px] text-gray-500">
-              <span className="flex items-center gap-1.5 bg-gray-100 dark:bg-white/5 px-2.5 py-1 rounded-md border border-gray-200 dark:border-white/10">
-                <Mail className="w-3.5 h-3.5 shrink-0" />
-                {user?.email}
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 pt-1 font-mono text-[10px] text-gray-500">
+              <span className="flex items-center gap-1 bg-gray-100 dark:bg-white/5 px-2 py-0.5 rounded border border-gray-200 dark:border-white/10">
+                <Mail className="w-3 h-3 shrink-0" />
+                {passedUser?.email || authUser?.email}
               </span>
             </div>
           </div>
         </div>
       </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-4 sm:px-5">
         
-        {/* 2. LEFT GRID PANEL: Editable profile parameters */}
-        <div className="lg:col-span-7 space-y-6">
-          <motion.section 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className={`border rounded-3xl p-4 sm:p-5 space-y-4 shadow-md ${
-            isDark ? 'bg-[#121212] border-[#222]' : 'bg-white border-gray-200 shadow-sm'
-          }`}>
-            <div>
-              <h3 className={`text-lg font-bold tracking-tight flex items-center gap-2.5 ${
-                isDark ? 'text-white' : 'text-gray-900'
-              }`}>
-                <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500">
-                  <User className="w-5 h-5" />
-                </div>
-                Personal Information
-              </h3>
-              <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} mt-1`}>Update your account details and how you appear in the system.</p>
-            </div>
+        {/* PERSONAL INFO */}
+        <motion.div 
+          whileHover={{ y: -1 }}
+          transition={{ duration: 0.2 }}
+          className={`rounded-2xl border ${isDark ? 'bg-[#0f172a]/60 backdrop-blur-md border-white/5 shadow-xl shadow-black/10' : 'bg-white border-gray-100 shadow-sm'} p-4 relative`}
+        >
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xs font-extrabold tracking-wider uppercase text-amber-500 flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5" />
+              Personal Information
+            </h3>
+            {!isImpersonating && (
+              <button 
+                onClick={() => setIsEditMode(!isEditMode)}
+                className={`text-[10px] px-2 py-0.5 rounded border font-semibold flex items-center gap-1 transition-all ${
+                  isDark 
+                    ? 'border-white/10 hover:bg-white/5 text-gray-300' 
+                    : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+                }`}
+              >
+                {isEditMode ? 'Cancel' : 'Edit'}
+              </button>
+            )}
+          </div>
 
-            <form onSubmit={handleUpdateProfileData} className="space-y-5 font-sans">
+          {isEditMode ? (
+            <form onSubmit={handleUpdateProfileData} className="space-y-3">
               <div>
-                <label className={`block text-xs font-bold mb-2 uppercase font-mono tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Display Name</label>
-                <input
-                  type="text"
-                  required
-                  readOnly={!isEditMode}
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Insert Display Name"
-                  className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all font-medium ${
-                    isDark ? 'bg-[#0a0a0a] border-[#2a2a2a] text-white placeholder-gray-600' : 'bg-gray-50 border-gray-200 text-gray-900'
-                  } ${!isEditMode && 'opacity-60 cursor-default'}`}
-                />
-              </div>
-
-              <div>
-                <label className={`block text-xs font-bold mb-2 uppercase font-mono tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Phone Number</label>
+                <label className="block text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-0.5">Display Name</label>
                 <div className="relative">
-                  <Phone className={`absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 ${isDark ? 'text-gray-600' : 'text-gray-400'}`} />
-                  <input
-                    type="tel"
-                    readOnly={!isEditMode}
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="Enter phone number"
-                    className={`w-full border rounded-xl pl-11 pr-4 py-3 text-sm font-medium ${
-                      isDark ? 'bg-[#0a0a0a] border-[#2a2a2a] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
-                    } ${!isEditMode && 'opacity-60 cursor-default'}`}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className={`block text-xs font-bold mb-2 uppercase font-mono tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Account Email (Locked)</label>
-                <div className="relative">
-                  <Mail className={`absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 ${isDark ? 'text-gray-600' : 'text-gray-400'}`} />
-                  <input
-                    type="email"
-                    readOnly
-                    disabled
-                    value={user?.email || 'N/A'}
-                    className={`w-full border rounded-xl pl-11 pr-4 py-3 text-sm select-all font-mono font-medium ${
-                      isDark ? 'bg-[#0a0a0a]/50 border-[#1a1a1a] text-gray-500 cursor-not-allowed' : 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'
-                    }`}
-                  />
-                </div>
-                <p className="text-[11px] text-gray-500 mt-1.5 flex items-center gap-1">
-                  <Activity className="w-3.5 h-3.5" /> Identity verified and tied to this email.
-                </p>
-              </div>
-
-              {/* Security ID key copyable component */}
-              <div>
-                <label className={`block text-xs font-bold mb-2 uppercase font-mono tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Session Key ID (Auth UID)</label>
-                <div className="flex gap-2">
-                  <div className={`relative flex-1 rounded-xl border flex items-center px-4 py-3 font-mono text-[13px] truncate select-all ${
-                    isDark ? 'bg-[#0a0a0a]/50 border-[#1a1a1a] text-gray-400' : 'bg-gray-100 border-gray-200 text-gray-600'
-                  }`}>
-                    {user?.uid}
+                  <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-gray-400">
+                    <User className="w-3.5 h-3.5" />
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleCopyUid}
-                    className={`w-12 rounded-xl border flex items-center justify-center transition-all shrink-0 cursor-pointer ${
-                      copiedUid 
-                        ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30' 
-                        : isDark ? 'border-[#2a2a2a] bg-[#1a1a1a] text-gray-400 hover:text-white' : 'border-gray-200 bg-white hover:bg-gray-50 text-gray-600 hover:text-gray-800'
-                    }`}
-                    title="Copy Auth UID"
-                  >
-                    {copiedUid ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-
-              <AnimatePresence>
-                {isEditMode && (
-                  <motion.div 
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="pt-4 flex justify-end border-t border-dashed border-gray-200 dark:border-gray-800 mt-6"
-                  >
-                    <button
-                      type="submit"
-                      disabled={saving || !displayName.trim()}
-                      className="px-6 py-3 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-black font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20 uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {saving ? (
-                        <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-                      ) : (
-                        <>
-                          <Check className="w-4 h-4 font-bold" />
-                          Update Profile Info
-                        </>
-                      )}
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </form>
-          </motion.section>
-
-          {/* Password Change Section */}
-          {(providerId === 'password' || providerId === 'google.com') && (
-            <motion.section 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15 }}
-              className={`border rounded-3xl p-4 sm:p-5 space-y-4 shadow-md ${
-              isDark ? 'bg-[#121212] border-[#222]' : 'bg-white border-gray-200 shadow-sm'
-            }`}>
-              <div>
-                <h3 className={`text-lg font-bold tracking-tight flex items-center gap-2.5 ${
-                  isDark ? 'text-white' : 'text-gray-900'
-                }`}>
-                  <div className="p-2 rounded-lg bg-red-500/10 text-red-500">
-                    <Lock className="w-5 h-5" />
-                  </div>
-                  Security Settings
-                </h3>
-                <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} mt-1`}>Update your password to keep your account secure.</p>
-              </div>
-
-              <form onSubmit={handlePasswordChange} className="space-y-5 font-sans">
-                <div>
-                  <label className={`block text-xs font-bold mb-2 uppercase font-mono tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>New Password</label>
-                  <input
-                    type="password"
+                  <input 
+                    type="text" 
+                    value={displayName} 
+                    onChange={(e) => setDisplayName(e.target.value)} 
+                    className={`w-full pl-8 pr-2.5 py-2 rounded-xl border text-xs font-medium transition-all ${
+                      isDark 
+                        ? 'bg-[#1e293b]/50 border-white/10 text-white focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/20' 
+                        : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10'
+                    }`} 
                     required
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Enter new password (min 6 chars)"
-                    className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/50 transition-all font-medium ${
-                      isDark ? 'bg-[#0a0a0a] border-[#2a2a2a] text-white placeholder-gray-600' : 'bg-gray-50 border-gray-200 text-gray-900'
-                    }`}
                   />
                 </div>
+              </div>
 
-                <div className="pt-4 flex justify-end border-t border-dashed border-gray-200 dark:border-gray-800 mt-6">
-                  <button
-                    type="submit"
-                    disabled={updatingPassword || newPassword.length < 6}
-                    className="px-6 py-3 bg-red-500 hover:bg-red-400 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {updatingPassword ? (
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    ) : (
-                      <>
-                        Update Password
-                      </>
-                    )}
-                  </button>
+              <div>
+                <label className="block text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-0.5">Phone Number</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-gray-400">
+                    <Phone className="w-3.5 h-3.5" />
+                  </div>
+                  <input 
+                    type="text" 
+                    value={phone} 
+                    onChange={(e) => setPhone(e.target.value)} 
+                    className={`w-full pl-8 pr-2.5 py-2 rounded-xl border text-xs font-medium transition-all ${
+                      isDark 
+                        ? 'bg-[#1e293b]/50 border-white/10 text-white focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/20' 
+                        : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10'
+                    }`} 
+                  />
                 </div>
-              </form>
-            </motion.section>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button 
+                  type="submit" 
+                  disabled={saving}
+                  className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold py-2 rounded-xl text-[11px] transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="space-y-2.5">
+              <div className={`p-2.5 rounded-xl flex items-center justify-between border ${isDark ? 'bg-[#1e293b]/20 border-white/5' : 'bg-gray-50/50 border-gray-100'}`}>
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500">
+                    <User className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <span className="block text-[8px] uppercase font-bold text-gray-500 leading-none mb-0.5">Display Name</span>
+                    <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{dbUser?.name}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className={`p-2.5 rounded-xl flex items-center justify-between border ${isDark ? 'bg-[#1e293b]/20 border-white/5' : 'bg-gray-50/50 border-gray-100'}`}>
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500">
+                    <Mail className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <span className="block text-[8px] uppercase font-bold text-gray-500 leading-none mb-0.5">Email Address</span>
+                    <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{dbUser?.email}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className={`p-2.5 rounded-xl flex items-center justify-between border ${isDark ? 'bg-[#1e293b]/20 border-white/5' : 'bg-gray-50/50 border-gray-100'}`}>
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-500">
+                    <Phone className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <span className="block text-[8px] uppercase font-bold text-gray-500 leading-none mb-0.5">Phone Contact</span>
+                    <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{dbUser?.phone || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
-        </div>
+        </motion.div>
 
-        {/* 3. RIGHT GRID PANEL: Static system role metadata details */}
-        <div className="lg:col-span-5 space-y-6">
-          
-          <motion.section 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className={`border rounded-3xl p-4 sm:p-5 space-y-4 shadow-md ${
-            isDark ? 'bg-[#121212] border-[#222]' : 'bg-white border-gray-200 shadow-sm'
-          }`}>
-            <div>
-              <h3 className={`text-lg font-bold tracking-tight flex items-center gap-2.5 ${
-                isDark ? 'text-white' : 'text-gray-900'
-              }`}>
-                <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500">
-                  <Shield onClick={() => {}} className="w-5 h-5" />
+        {/* ROLE & PERMISSIONS */}
+        <motion.div 
+          whileHover={{ y: -1 }}
+          transition={{ duration: 0.2 }}
+          className={`rounded-2xl border ${isDark ? 'bg-[#0f172a]/60 backdrop-blur-md border-white/5 shadow-xl shadow-black/10' : 'bg-white border-gray-100 shadow-sm'} p-4`}
+        >
+          <h3 className="text-xs font-extrabold tracking-wider uppercase text-amber-500 mb-4 flex items-center gap-1.5">
+            <Shield className="w-3.5 h-3.5" />
+            Role & Permissions
+          </h3>
+          <div className="space-y-2.5">
+            <div className={`p-2.5 rounded-xl flex items-center justify-between border ${isDark ? 'bg-[#1e293b]/20 border-white/5' : 'bg-gray-50/50 border-gray-100'}`}>
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500">
+                  <ShieldCheck className="w-3.5 h-3.5" />
                 </div>
-                Role & Permissions
-              </h3>
-              <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} mt-1`}>Your assigned security clearance</p>
+                <div>
+                  <span className="block text-[8px] uppercase font-bold text-gray-400 mb-0.5">System Role</span>
+                  <span className={`text-xs font-bold capitalize ${isDark ? 'text-white' : 'text-gray-900'}`}>{dbUser?.role}</span>
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-4 font-sans text-sm">
-              <div className={`p-5 border rounded-2xl flex flex-col gap-4 ${
-                isDark ? 'bg-[#0a0a0a] border-[#222]' : 'bg-gray-50 border-gray-200'
-              }`}>
-                
-                <div className="flex items-center justify-between border-b pb-3 border-dashed border-gray-300 dark:border-gray-800">
-                  <div className="flex items-center gap-2">
-                     <ShieldCheck className="w-4 h-4 text-amber-500" />
-                     <span className="text-gray-500 dark:text-gray-400 font-mono text-xs uppercase">Phone</span>
-                  </div>
-                  <span className={`font-bold text-xs bg-amber-500/10 text-amber-600 dark:text-amber-500 px-2.5 py-1 rounded-lg border border-amber-500/20`}>{userPhone}</span>
+            <div className={`p-2.5 rounded-xl flex items-center justify-between border ${isDark ? 'bg-[#1e293b]/20 border-white/5' : 'bg-gray-50/50 border-gray-100'}`}>
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 </div>
+                <div>
+                  <span className="block text-[8px] uppercase font-bold text-gray-400 mb-0.5">Account Status</span>
+                  <span className={`text-xs font-bold text-emerald-500`}>{dbUser?.status || 'Active'}</span>
+                </div>
+              </div>
+            </div>
 
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                     <Lock className="w-4 h-4 text-gray-400" />
-                     <span className="text-gray-500 dark:text-gray-400 font-mono text-xs uppercase">Source</span>
+            <div className={`p-2.5 rounded-xl flex items-center justify-between border ${isDark ? 'bg-[#1e293b]/20 border-white/5' : 'bg-gray-50/50 border-gray-100'}`}>
+              <div className="flex items-center gap-2.5 w-full justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-500">
+                    <Cpu className="w-3.5 h-3.5" />
                   </div>
-                  <span className={`font-medium text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                    {loadingDb ? 'Detecting...' : dbUser ? 'Firebase Firestore' : 'OAuth Auto-Provision'}
+                  <div>
+                    <span className="block text-[8px] uppercase font-bold text-gray-400 mb-0.5">Auth UID</span>
+                    <span className="font-mono text-[10px] text-gray-400 break-all">{passedUser?.id || authUser?.uid}</span>
+                  </div>
+                </div>
+                <button 
+                  onClick={handleCopyUid}
+                  className={`p-1 rounded-lg border transition-all cursor-pointer shrink-0 ml-2 ${
+                    isDark 
+                      ? 'border-white/10 hover:bg-white/5 text-gray-450 hover:text-white' 
+                      : 'border-gray-200 hover:bg-gray-50 text-gray-500 hover:text-gray-800'
+                  }`}
+                  title="Copy UID"
+                >
+                  {copiedUid ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+        
+        {/* SECURITY SETTINGS */}
+        <motion.div 
+          whileHover={{ y: -1 }}
+          transition={{ duration: 0.2 }}
+          className={`rounded-2xl border ${isDark ? 'bg-[#0f172a]/60 backdrop-blur-md border-white/5 shadow-xl shadow-black/10' : 'bg-white border-gray-100 shadow-sm'} p-4`}
+        >
+          <h3 className="text-xs font-extrabold tracking-wider uppercase text-amber-500 mb-4 flex items-center gap-1.5">
+            <Lock className="w-3.5 h-3.5" />
+            Security Settings
+          </h3>
+          {!isImpersonating ? (
+            <form onSubmit={handlePasswordChange} className="space-y-3">
+              <div>
+                <label className="block text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-0.5">Current Password</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-gray-400">
+                    <Lock className="w-3.5 h-3.5" />
+                  </div>
+                  <input 
+                    type="password" 
+                    value={currentPassword} 
+                    onChange={(e) => setCurrentPassword(e.target.value)} 
+                    placeholder="Enter current password" 
+                    className={`w-full pl-8 pr-2.5 py-2 rounded-xl border text-xs font-medium transition-all ${
+                      isDark 
+                        ? 'bg-[#1e293b]/50 border-white/10 text-white focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/20 placeholder-gray-650' 
+                        : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 placeholder-gray-400'
+                    }`} 
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-0.5">New Password</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-gray-400">
+                    <Lock className="w-3.5 h-3.5" />
+                  </div>
+                  <input 
+                    type="password" 
+                    value={newPassword} 
+                    onChange={(e) => setNewPassword(e.target.value)} 
+                    placeholder="At least 6 characters" 
+                    className={`w-full pl-8 pr-2.5 py-2 rounded-xl border text-xs font-medium transition-all ${
+                      isDark 
+                        ? 'bg-[#1e293b]/50 border-white/10 text-white focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/20 placeholder-gray-650' 
+                        : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 placeholder-gray-400'
+                    }`} 
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-0.5">Confirm Password</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-gray-400">
+                    <Lock className="w-3.5 h-3.5" />
+                  </div>
+                  <input 
+                    type="password" 
+                    value={confirmPassword} 
+                    onChange={(e) => setConfirmPassword(e.target.value)} 
+                    placeholder="Confirm password" 
+                    className={`w-full pl-8 pr-2.5 py-2 rounded-xl border text-xs font-medium transition-all ${
+                      isDark 
+                        ? 'bg-[#1e293b]/50 border-white/10 text-white focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/20 placeholder-gray-650' 
+                        : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 placeholder-gray-400'
+                    }`} 
+                    required
+                  />
+                </div>
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={updatingPassword} 
+                className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold py-2 rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {updatingPassword ? (
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Lock className="w-3 h-3" />
+                    Reset Password
+                  </>
+                )}
+              </button>
+            </form>
+          ) : (
+            <div className={`p-3 rounded-xl text-center border ${isDark ? 'bg-red-500/5 border-red-500/10 text-red-400/80' : 'bg-red-50 border-red-100 text-red-600'} text-[11px] font-bold`}>
+              Password resets are restricted during user impersonation.
+            </div>
+          )}
+        </motion.div>
+
+        {/* SESSION DETAILS */}
+        <motion.div 
+          whileHover={{ y: -1 }}
+          transition={{ duration: 0.2 }}
+          className={`rounded-2xl border ${isDark ? 'bg-[#0f172a]/60 backdrop-blur-md border-white/5 shadow-xl shadow-black/10' : 'bg-white border-gray-100 shadow-sm'} p-4`}
+        >
+          <h3 className="text-xs font-extrabold tracking-wider uppercase text-amber-500 mb-4 flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5" />
+            Session Details
+          </h3>
+          <div className="space-y-2.5">
+            <div className={`p-2.5 rounded-xl flex items-center justify-between border ${isDark ? 'bg-[#1e293b]/20 border-white/5' : 'bg-gray-50/50 border-gray-100'}`}>
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500">
+                  <Calendar className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <span className="block text-[8px] uppercase font-bold text-gray-450 leading-none mb-0.5">Account Created</span>
+                  <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {authUser?.metadata.creationTime ? new Date(authUser.metadata.creationTime).toLocaleString() : 'N/A'}
                   </span>
                 </div>
               </div>
-
-              {dbUser && (
-                <div className="p-3.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-500 dark:text-indigo-400 text-xs leading-relaxed flex gap-2.5 items-start">
-                  <ShieldCheck className="w-4.5 h-4.5 shrink-0 mt-0.5" />
-                  <span className="font-medium">Your email matches a registered staff document in the system. Full access rights are synchronized with local database credentials.</span>
-                </div>
-              )}
-            </div>
-          </motion.section>
-
-          <motion.section 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className={`border rounded-3xl p-4 sm:p-5 space-y-4 shadow-md ${
-            isDark ? 'bg-[#121212] border-[#222]' : 'bg-white border-gray-200 shadow-sm'
-          }`}>
-            <div>
-              <h3 className={`text-lg font-bold tracking-tight flex items-center gap-2.5 ${
-                isDark ? 'text-white' : 'text-gray-900'
-              }`}>
-                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-500">
-                  <Cpu className="w-5 h-5" />
-                </div>
-                Session Details
-              </h3>
-              <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'} mt-1`}>Current authentication context</p>
             </div>
 
-            <div className="space-y-4 font-sans text-xs pt-1">
-              <div className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                <div className="flex items-center gap-2.5 text-gray-500 dark:text-gray-400">
-                  <Calendar className="w-4 h-4 shrink-0" />
-                  <span className="font-bold text-[11px] uppercase tracking-wider">Created</span>
+            <div className={`p-2.5 rounded-xl flex items-center justify-between border ${isDark ? 'bg-[#1e293b]/20 border-white/5' : 'bg-gray-50/50 border-gray-100'}`}>
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-orange-500/10 text-orange-500">
+                  <Clock className="w-3.5 h-3.5" />
                 </div>
-                <span className={`font-mono text-[11px] truncate ml-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                  {user?.metadata.creationTime ? new Date(user.metadata.creationTime).toLocaleString() : 'N/A'}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                <div className="flex items-center gap-2.5 text-gray-500 dark:text-gray-400">
-                  <Clock className="w-4 h-4 shrink-0" />
-                  <span className="font-bold text-[11px] uppercase tracking-wider">Last Sign In</span>
+                <div>
+                  <span className="block text-[8px] uppercase font-bold text-gray-450 leading-none mb-0.5">Last Sign-In</span>
+                  <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {authUser?.metadata.lastSignInTime ? new Date(authUser.metadata.lastSignInTime).toLocaleString() : 'N/A'}
+                  </span>
                 </div>
-                <span className={`font-mono text-[11px] truncate ml-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                  {user?.metadata.lastSignInTime ? new Date(user.metadata.lastSignInTime).toLocaleString() : 'N/A'}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                <div className="flex items-center gap-2.5 text-gray-500 dark:text-gray-400">
-                  <Lock className="w-4 h-4 shrink-0" />
-                  <span className="font-bold text-[11px] uppercase tracking-wider">Provider</span>
-                </div>
-                <span className="text-emerald-500 font-bold uppercase text-[11px] tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded">
-                  {providerLabel}
-                </span>
               </div>
             </div>
-          </motion.section>
 
+            <div className={`p-2.5 rounded-xl flex items-center justify-between border ${isDark ? 'bg-[#1e293b]/20 border-white/5' : 'bg-gray-50/50 border-gray-100'}`}>
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-violet-500/10 text-violet-500">
+                  <Lock className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <span className="block text-[8px] uppercase font-bold text-gray-450 leading-none mb-0.5">Authentication</span>
+                  <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{providerLabel}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
 
+        {/* PANEL SUMMARY */}
+        <motion.div 
+          whileHover={{ y: -1 }}
+          transition={{ duration: 0.2 }}
+          className={`rounded-2xl border ${isDark ? 'bg-[#0f172a]/60 backdrop-blur-md border-white/5 shadow-xl shadow-black/10' : 'bg-white border-gray-100 shadow-sm'} p-4 col-span-1 md:col-span-2`}
+        >
+          <h3 className="text-xs font-extrabold tracking-wider uppercase text-amber-500 mb-4 flex items-center gap-1.5">
+            <Building className="w-3.5 h-3.5" />
+            Assigned Panels & Campaigns
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {dbUser?.allowedPanelIds?.map(panelId => {
+              const panel = panels.find(p => p.id === panelId);
+              const campaignCount = campaigns.filter(c => c.panelId === panelId && c.selectedUsers?.includes(dbUser.id)).length;
+              return (
+                <div 
+                  key={panelId} 
+                  className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+                    isDark 
+                      ? 'bg-[#1e293b]/10 border-white/5 hover:border-amber-500/30 hover:bg-[#1e293b]/20' 
+                      : 'bg-gray-50 border-gray-100 hover:border-amber-500/30 hover:bg-gray-100/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 bg-amber-500/10 text-amber-500 rounded-lg">
+                      <Building className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-gray-800'}`}>{panel?.name || `Panel: ${panelId}`}</span>
+                      <span className="block text-[9px] font-semibold text-gray-500">ID: {panelId}</span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-extrabold text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full">
+                    {campaignCount} {campaignCount === 1 ? 'Campaign' : 'Campaigns'}
+                  </span>
+                </div>
+              );
+            })}
+            {(!dbUser?.allowedPanelIds || dbUser.allowedPanelIds.length === 0) && (
+              <div className={`col-span-1 sm:col-span-2 p-5 rounded-xl border text-center text-xs font-bold ${isDark ? 'bg-white/5 border-white/5 text-gray-500' : 'bg-gray-50 border-gray-100 text-gray-400'}`}>
+                No active panels have been assigned to this account.
+              </div>
+            )}
+          </div>
+        </motion.div>
 
-        </div>
       </div>
-      
     </div>
   );
 }

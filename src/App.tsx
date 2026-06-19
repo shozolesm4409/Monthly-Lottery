@@ -40,7 +40,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className={`min-h-screen ${theme === 'dark' ? 'bg-[#050505] text-gray-200' : 'bg-gray-50 text-gray-900'} flex flex-col items-center justify-center p-4 transition-colors duration-300`}>
+      <div className={`min-h-screen ${theme === 'dark' ? 'bg-[#0F172B] text-gray-200' : 'bg-gray-50 text-gray-900'} flex flex-col items-center justify-center p-4 transition-colors duration-300`}>
         <div className="relative flex items-center justify-center">
           <div className="w-16 h-16 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin"></div>
           <div className="absolute">
@@ -56,7 +56,7 @@ export default function App() {
 
   // Choose display view based on session authenticity
   return (
-    <div className={`min-h-screen ${theme === 'dark' ? 'dark bg-[#050505] text-[#e0e0e0]' : 'bg-gray-50 text-gray-800'} font-sans antialiased`}>
+    <div className={`min-h-screen ${theme === 'dark' ? 'dark bg-[#0F172B] text-[#e0e0e0]' : 'bg-gray-50 text-gray-800'} font-sans antialiased`}>
       {!user ? (
         <LoginUI onSuccess={() => {}} theme={theme} toggleTheme={toggleTheme} externalError={pendingError} />
       ) : (

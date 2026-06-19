@@ -78,6 +78,7 @@ export interface ManagedUser {
   phone?: string;
   createdAt?: string;
   panelId?: string;
+  allowedPanelIds?: string[];
   photoURL?: string;
   winnings?: {
     campaignId: string;

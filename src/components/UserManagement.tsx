@@ -12,7 +12,7 @@ import {
 import { db, firebaseConfig } from '../firebase';
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, updateProfile, signOut } from 'firebase/auth';
-import { ManagedUser, DashboardPanel } from '../types';
+import { ManagedUser, DashboardPanel, LotteryCampaign } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, 
@@ -35,6 +35,7 @@ import {
   LogIn
 } from 'lucide-react';
 import Swal from 'sweetalert2';
+import UserProfileViewModal from './admin/modals/UserProfileViewModal';
 
 interface UserManagementProps {
   theme: 'dark' | 'light';
@@ -45,6 +46,7 @@ interface UserManagementProps {
   isSuperAdmin?: boolean;
   viewMode?: 'users' | 'approve';
   onImpersonateUser?: (uid: string) => void;
+  campaigns: LotteryCampaign[];
 }
 
 export default function UserManagement({ 
@@ -55,7 +57,8 @@ export default function UserManagement({
   activePanelId = 'default',
   isSuperAdmin = false,
   viewMode = 'users',
-  onImpersonateUser
+  onImpersonateUser,
+  campaigns
 }: UserManagementProps) {
 
   const [localViewMode, setLocalViewMode] = useState<'users' | 'approve'>(viewMode);
@@ -83,6 +86,7 @@ export default function UserManagement({
 
   // Modal / Form states
   const [showModal, setShowModal] = useState(false);
+  const [viewingUser, setViewingUser] = useState<ManagedUser | null>(null);
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
 
   const [formName, setFormName] = useState('');
@@ -91,7 +95,7 @@ export default function UserManagement({
   const [formRole, setFormRole] = useState('Admin');
   const [formStatus, setFormStatus] = useState<'Active' | 'Inactive' | 'Pending'>('Active');
   const [formPhone, setFormPhone] = useState('');
-  const [formPanelId, setFormPanelId] = useState('default');
+  const [formAllowedPanelIds, setFormAllowedPanelIds] = useState<string[]>([]);
 
   // To toggle password visibility for individual rows
   const [showPlainPasswordId, setShowPlainPasswordId] = useState<string | null>(null);
@@ -132,7 +136,7 @@ export default function UserManagement({
     setFormRole('Admin');
     setFormStatus('Active');
     setFormPhone('');
-    setFormPanelId(activePanelId || 'default');
+    setFormAllowedPanelIds(activePanelId ? [activePanelId] : []);
     setShowFormPassword(false);
     setShowModal(true);
   };
@@ -149,7 +153,7 @@ export default function UserManagement({
     setFormRole(user.role || 'Admin');
     setFormStatus(user.status || 'Active');
     setFormPhone(user.phone || '');
-    setFormPanelId(user.panelId || 'default');
+    setFormAllowedPanelIds(user.allowedPanelIds || (user.panelId ? [user.panelId] : []));
     setShowFormPassword(false);
     setShowModal(true);
   };
@@ -179,7 +183,7 @@ export default function UserManagement({
         status: formStatus,
         permission: 'Full Access',
         phone: formPhone.trim(),
-        panelId: formPanelId,
+        allowedPanelIds: formAllowedPanelIds,
       };
 
       if (editingUser) {
@@ -650,6 +654,22 @@ export default function UserManagement({
                           <LogIn className="w-3.5 h-3.5" />
                         </button>
                       )}
+                      
+                      {/* View button */}
+                      <button
+                        onClick={() => {
+                          setViewingUser(user);
+                        }}
+                        className={`p-1.5 rounded-lg border ${
+                            theme === 'dark' 
+                              ? 'bg-[#161616] border-[#1a1a1a] hover:bg-blue-500/15 text-blue-400' 
+                              : 'bg-white border-gray-200 hover:bg-blue-50 text-blue-600 shadow-sm'
+                          } transition-colors cursor-pointer`}
+                          title="View Profile"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+
                       <button
                         onClick={() => handleDeleteUser(user)}
                         className={`p-1.5 rounded-lg border ${
@@ -809,23 +829,28 @@ export default function UserManagement({
                 {/* 8. Panel Selection Assignment */}
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-500 mb-1">Assigned Dashboard Panel</label>
-                  <select
-                    value={formPanelId}
-                    onChange={(e) => setFormPanelId(e.target.value)}
-                    className={`w-full ${
-                      theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a] text-white' : 'bg-gray-50 border-gray-200 text-gray-900'
-                    } border rounded-xl px-3.5 py-3 focus:outline-none focus:ring-1 focus:ring-amber-500`}
-                  >
+                  <div className={`w-full ${
+                    theme === 'dark' ? 'bg-[#161616] border-[#1a1a1a]' : 'bg-gray-50 border-gray-200'
+                  } border rounded-xl px-3.5 py-3 grid grid-cols-2 gap-2 max-h-[150px] overflow-y-auto`}>
                     {panels && panels.length > 0 ? (
                       panels.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
+                        <label key={p.id} className="flex items-center gap-2 text-xs font-medium cursor-pointer truncate">
+                          <input
+                            type="checkbox"
+                            checked={formAllowedPanelIds.includes(p.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) setFormAllowedPanelIds([...formAllowedPanelIds, p.id]);
+                              else setFormAllowedPanelIds(formAllowedPanelIds.filter((id) => id !== p.id));
+                            }}
+                            className="accent-amber-500"
+                          />
+                          <span className={`${theme === 'dark' ? 'text-white' : 'text-gray-900'} truncate`}>{p.name}</span>
+                        </label>
                       ))
                     ) : (
-                      <option value="default">Main Platform Panel</option>
+                      <div className="text-xs text-gray-400 col-span-2">No panels available</div>
                     )}
-                  </select>
+                  </div>
                 </div>
 
                 {/* Modal actions buttons row */}
@@ -855,6 +880,18 @@ export default function UserManagement({
               </form>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {viewingUser && (
+          <UserProfileViewModal 
+            user={viewingUser} 
+            onClose={() => setViewingUser(null)} 
+            theme={theme}
+            campaigns={campaigns}
+            panels={panels}
+          />
         )}
       </AnimatePresence>
     </div>

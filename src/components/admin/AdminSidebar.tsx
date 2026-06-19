@@ -97,7 +97,7 @@ export default function AdminSidebar({
   userRole = 'superadmin',
   dbUser = null
 }: AdminSidebarProps) {
-  const showIconbar = userRole === 'superadmin';
+  const showIconbar = userRole === 'superadmin' || ((dbUser?.allowedPanelIds?.length || 0) > 1);
 
   const displayName = dbUser?.name || user?.displayName || user?.email?.split('@')[0] || 'User';
   const displayEmail = dbUser?.email || user?.email || '';
@@ -117,12 +117,12 @@ export default function AdminSidebar({
     <>
       {/* 1. SIDEBAR - Desktop Persistent with Integrated Icon bar on Left */}
       <aside className={`${showIconbar ? 'w-80' : 'w-[264px]'} max-lg:hidden fixed inset-y-0 left-0 border-r flex flex-row z-30 transition-all duration-300 ${
-        theme === 'dark' ? 'bg-[#0d0d0d] border-[#1a1a1a] text-gray-200' : 'bg-white border-gray-200 text-gray-700 shadow-sm'
+        theme === 'dark' ? 'bg-[var(--bg-sidebar)] border-[#1a1a1a] text-gray-200' : 'bg-white border-gray-200 text-gray-700 shadow-sm'
       }`}>
         {/* LEFT COLUMN: Panel Icon Strip (Covers the red marked area in uploaded graphic) */}
         {showIconbar && (
           <div className={`w-14 shrink-0 flex flex-col items-center justify-between py-4 border-r ${
-            theme === 'dark' ? 'bg-[#060606] border-[#1a1a1a]' : 'bg-gray-50 border-gray-200'
+            theme === 'dark' ? 'bg-[var(--bg-iconber)] border-[#1a1a1a]' : 'bg-gray-50 border-gray-200'
           }`}>
           <div className="flex flex-col items-center gap-4 w-full">
             {/* Top decorative badge */}
@@ -134,7 +134,7 @@ export default function AdminSidebar({
 
             {/* Vertically scrollable list of dashboard panels as visual icon circles */}
             <div className="flex flex-col gap-2.5 w-full items-center overflow-y-auto max-h-[60vh] py-1 [scrollbar-width:none] [-ms-overflow-style:none]">
-              {panels.map((p) => {
+              {panels.filter(p => !dbUser?.allowedPanelIds || dbUser.allowedPanelIds.includes(p.id) || userRole === 'superadmin').map((p) => {
                 const isActive = p.id === activePanelId;
                 const initials = p.name ? p.name.slice(0, 2).toUpperCase() : 'P';
                 
@@ -354,7 +354,7 @@ export default function AdminSidebar({
           </div>
 
           {/* Footer containing User credentials */}
-          <div className={`p-4 border-t ${theme === 'dark' ? 'border-[#1a1a1a] bg-[#060606]' : 'border-gray-200 bg-gray-50'} space-y-3 shrink-0`}>
+          <div className={`p-4 border-t ${theme === 'dark' ? 'border-[#1a1a1a] bg-[var(--bg-sidebar)]' : 'border-gray-200 bg-gray-50'} space-y-3 shrink-0`}>
             {/* User Profile Block */}
             <div className="flex items-center gap-3">
               {displayPhoto ? (

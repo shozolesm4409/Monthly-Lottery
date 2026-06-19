@@ -1138,7 +1138,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
   }
 
   return (
-    <div className={`h-screen max-h-screen overflow-hidden ${theme === 'dark' ? 'bg-[#050505] text-[#e0e0e0]' : 'bg-gray-50 text-gray-800'} flex font-sans transition-colors duration-300 relative`}>
+    <div className={`h-screen max-h-screen overflow-hidden ${theme === 'dark' ? 'bg-[#0F172B] text-[#e0e0e0]' : 'bg-gray-50 text-gray-800'} flex font-sans transition-colors duration-300 relative`}>
       
       <AdminSidebar
         theme={theme}
@@ -1159,11 +1159,11 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
       />
 
       {/* MAIN CONTAINER */}
-      <div className={`flex-1 ${resolvedRole === 'superadmin' ? 'lg:pl-80' : 'lg:pl-[264px]'} flex flex-col h-screen w-full relative overflow-hidden`}>
+      <div className={`flex-1 ${(resolvedRole === 'superadmin' || ((dbUser?.allowedPanelIds?.length || 0) > 1)) ? 'lg:pl-80' : 'lg:pl-[264px]'} flex flex-col h-screen w-full relative overflow-hidden`}>
         
         {/* 2. BODY HEADER */}
         <header className={`border-b ${
-          theme === 'dark' ? 'bg-[#0a0a0a]/80 border-[#1a1a1a]' : 'bg-white/80 border-gray-200 shadow-sm'
+          theme === 'dark' ? 'bg-[var(--bg-sidebar)] border-[#1a1a1a]' : 'bg-white/80 border-gray-200 shadow-sm'
         } backdrop-blur-md sticky top-0 z-40 px-4 sm:px-5 py-2.5 sm:py-3 flex items-center justify-between gap-3.5 transition-colors duration-300`}>
           
           <div className="flex items-center gap-3.5">
@@ -1379,6 +1379,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
               isSuperAdmin={resolvedRole === 'superadmin'}
               viewMode="users"
               onImpersonateUser={(uid) => { setImpersonatedUid(uid); setActiveTab('campaigns'); }}
+              campaigns={campaigns}
             />
           </div>
         )}
@@ -1395,6 +1396,7 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
               isSuperAdmin={resolvedRole === 'superadmin'}
               viewMode="approve"
               onImpersonateUser={(uid) => { setImpersonatedUid(uid); setActiveTab('campaigns'); }}
+              campaigns={campaigns}
             />
           </div>
         )}
@@ -1407,6 +1409,9 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
               theme={theme}
               setActionError={setActionError}
               setActionSuccess={setActionSuccess}
+              user={impersonatedUid ? dbUser : undefined}
+              panels={panels}
+              campaigns={campaigns}
             />
           </div>
         )}
@@ -2066,7 +2071,11 @@ export default function AdminDashboard({ theme = 'dark', toggleTheme }: AdminDas
                 campaign={roadmapCampaign} 
                 recentlyDrawnMonth={recentlyDrawnMonth} 
                 onBack={() => { setRoadmapCampaign(null); setRecentlyDrawnMonth(null); setActiveTab('campaigns'); }} 
-                onNavigateToHistory={() => { setActiveTab('history_logs'); setHistoryLogTab('draw_history'); }}
+                onCheckWinners={(cid) => {
+                    setHistoryFilterCampaignId(cid);
+                    setActiveTab('history_logs');
+                    setHistoryLogTab('draw_history');
+                }}
                 onNavigateToAchievements={() => setActiveTab('achievements')}
                 theme={theme}
                 availableUsers={availableUsers}

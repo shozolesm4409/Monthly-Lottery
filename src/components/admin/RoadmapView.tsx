@@ -2,12 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Calendar, Moon, Trophy, Ticket, Globe, Gift, Users, ArrowLeft, Sparkles } from 'lucide-react';
 import { LotteryCampaign, ManagedUser } from '../../types';
+import { Swiper, SwiperSlide } from 'swiper/react';
+import { Autoplay, Pagination } from 'swiper/modules';
+
+import 'swiper/css';
+import 'swiper/css/pagination';
 
 interface RoadmapViewProps {
   campaign: LotteryCampaign | null;
   recentlyDrawnMonth?: number | null;
   onBack: () => void;
-  onNavigateToHistory?: () => void;
+  onCheckWinners: (campaignId: string) => void;
   onNavigateToAchievements?: () => void;
   theme?: 'dark' | 'light';
   availableUsers?: ManagedUser[];
@@ -17,7 +22,7 @@ export default function RoadmapView({
   campaign, 
   recentlyDrawnMonth, 
   onBack, 
-  onNavigateToHistory,
+  onCheckWinners,
   onNavigateToAchievements,
   theme, 
   availableUsers = [] 
@@ -236,52 +241,97 @@ export default function RoadmapView({
         {/* Right Content Area */}
         <div className="flex-1 space-y-4 pb-12 md:pb-0 z-10 w-full overflow-hidden">
           
-          {/* Event Kick-off */}
-          <div className={`p-4 rounded-xl border flex items-center justify-between ${
-            isDark ? 'bg-[#151a28] border-gray-800' : 'bg-gray-50 border-gray-200'
-          }`}>
-            <div>
-              <h3 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Event Kick-Off</h3>
-              <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                {campaign.title} Officially Starts.
-              </p>
+          {/* Registered Users for Campaign */}
+          <div className={`p-4 rounded-xl border ${
+            isDark ? 'bg-[#151a28] border-gray-800' : 'bg-white border-gray-200'
+          } shadow-sm`}>
+            <h3 className={`font-bold text-lg mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              Registered Users ({campaign.selectedUsers?.length || 0})
+            </h3>
+            <div className="grid grid-cols-6 gap-3">
+              {campaign.selectedUsers?.map((userId, index) => {
+                const user = availableUsers.find(u => u.id === userId);
+                if (!user) return null;
+
+                // Check if user is a winner in any past draw
+                const isWinner = pastDraws.some(draw => draw.winnerId?.split(',').map(id => id.trim()).includes(user.id));
+                
+                return (
+                  <div key={user.id} className="relative flex flex-col items-center gap-1.5 min-w-0">
+                    <div className="relative">
+                      <img 
+                        src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random`} 
+                        alt={user.name} 
+                        className="w-12 h-12 rounded-full border-2 border-gray-700/20 object-cover"
+                      />
+                      {isWinner && (
+                        <div className="absolute -top-2 -right-2 bg-amber-500 rounded-full p-1 shadow-md border-2 border-white dark:border-[#0f1118]">
+                           <Trophy className="w-3 h-3 text-white" />
+                        </div>
+                      )}
+                      {pastDraws.some(draw => draw.winnerId?.split(',').map(id => id.trim()).includes(user.id)) && (
+                        <div className="absolute -bottom-1 -left-1 bg-gray-800 text-white text-[9px] font-bold rounded-full w-5 h-5 flex items-center justify-center border-2 border-white dark:border-[#0f1118]">
+                          {pastDraws.find(draw => draw.winnerId?.split(',').map(id => id.trim()).includes(user.id))?.monthNumber}
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-center truncate w-full font-medium text-gray-500 dark:text-gray-400">
+                      {user.name}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
           {/* Past Draw Winners (Horizontal Scroll) */}
           {pastDraws.length > 0 && (
-            <div className="space-y-3">
+            <div className="space-y-3 pb-2">
               <h3 className="font-bold text-lg px-1 flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-amber-500" />
                 Past Draw Winners
               </h3>
-              <div className="flex overflow-x-auto gap-4 pb-2 scrollbar-hide py-1">
-                {pastDraws.map(d => (
-                  <div key={d.monthNumber} className={`shrink-0 w-60 p-3 rounded-xl border shadow-sm relative overflow-hidden ${
-                    d.monthNumber === recentlyDrawnMonth 
-                      ? (isDark ? 'bg-amber-500/10 border-amber-500' : 'bg-amber-50 border-amber-400')
-                      : (isDark ? 'bg-[#151a28] border-gray-800' : 'bg-white border-gray-200')
-                  }`}>
-                    {d.monthNumber === recentlyDrawnMonth && (
-                      <div className="absolute top-0 right-0 w-12 h-12 bg-amber-500 blur-2xl opacity-40"></div>
-                    )}
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="bg-amber-500/10 text-amber-600 dark:text-amber-500 text-[10px] font-bold px-2 py-1 rounded inline-flex items-center gap-1 border border-amber-500/20 uppercase tracking-wider">
-                        <Trophy className="w-3 h-3" /> {d.winnerId && d.winnerId.includes(',') ? 'Winners' : 'Winner'}
+              <div className="w-full">
+                <Swiper
+                  modules={[Autoplay, Pagination]}
+                  spaceBetween={16}
+                  slidesPerView="auto"
+                  pagination={{ clickable: true }}
+                  autoplay={{ delay: 3500, disableOnInteraction: false }}
+                  className="w-full pb-8"
+                >
+                  {pastDraws.map(d => (
+                    <SwiperSlide key={d.monthNumber} className="max-w-[260px] pointer-events-auto">
+                      <div className={`p-3 rounded-xl border shadow-sm relative overflow-hidden h-full ${
+                        d.monthNumber === recentlyDrawnMonth 
+                          ? (isDark ? 'bg-amber-500/10 border-amber-500' : 'bg-amber-50 border-amber-400')
+                          : (isDark ? 'bg-[#151a28] border-gray-800' : 'bg-white border-gray-200')
+                      }`}>
+                        {d.monthNumber === recentlyDrawnMonth && (
+                          <div className="absolute top-0 right-0 w-12 h-12 bg-amber-500 blur-2xl opacity-40"></div>
+                        )}
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="bg-amber-500/10 text-amber-600 dark:text-amber-500 text-[10px] font-bold px-2 py-1 rounded inline-flex items-center gap-1 border border-amber-500/20 uppercase tracking-wider">
+                            <Trophy className="w-3 h-3" /> {d.winnerId && d.winnerId.includes(',') ? 'Winners' : 'Winner'}
+                          </div>
+                          <div className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                            {((campaign.totalUsers || 0) * (campaign.monthlyAmount || 0)).toLocaleString()} ৳
+                          </div>
+                        </div>
+                        <div className="absolute top-12 right-2 text-amber-500 opacity-20">
+                          <Trophy className="w-16 h-16 animate-pulse" />
+                        </div>
+                        <h4 className={`font-bold text-sm mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>{d.monthNumber === recentlyDrawnMonth && <span className="mr-1 animate-pulse">🏆</span>}Round #{d.monthNumber}: {d.winnerId && d.winnerId.includes(',') ? 'Draw Winners' : 'Draw Winner'}</h4>
+                        <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'} font-medium`}>
+                          {d.winnerId && d.winnerId.includes(',') ? 'Names' : 'Name'}: <span className={isDark ? 'text-gray-200' : 'text-gray-800'}>{d.winnerName}</span>
+                        </p>
+                        <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'} font-medium mt-1`}>
+                          Draw Date: {new Date(d.drawDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </p>
                       </div>
-                      <div className="text-xs font-bold text-gray-700 dark:text-gray-300">
-                        {((campaign.totalUsers || 0) * (campaign.monthlyAmount || 0)).toLocaleString()} ৳
-                      </div>
-                    </div>
-                    <h4 className={`font-bold text-sm mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>Round #{d.monthNumber}: {d.winnerId && d.winnerId.includes(',') ? 'Draw Winners' : 'Draw Winner'}</h4>
-                    <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'} font-medium`}>
-                      {d.winnerId && d.winnerId.includes(',') ? 'Names' : 'Name'}: <span className={isDark ? 'text-gray-200' : 'text-gray-800'}>{d.winnerName}</span>
-                    </p>
-                    <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'} font-medium mt-1`}>
-                      Draw Date: {new Date(d.drawDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </p>
-                  </div>
-                ))}
+                    </SwiperSlide>
+                  ))}
+                </Swiper>
               </div>
             </div>
           )}
@@ -351,7 +401,7 @@ export default function RoadmapView({
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row items-center gap-4 mt-6 pt-4 border-t border-gray-200 dark:border-gray-800 mx-auto justify-center">
         <button 
-          onClick={onNavigateToHistory}
+          onClick={() => onCheckWinners(campaign.id)}
           className={`flex items-center gap-2 px-6 py-3.5 rounded-full font-bold text-sm transition-all ${
             isDark ? 'bg-[#161f36] text-white hover:bg-[#1f2947]' : 'bg-[#161f36] text-white shadow-xl shadow-[#161f36]/20'
           }`}

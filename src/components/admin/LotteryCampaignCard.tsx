@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit2, RotateCcw, Trash2, Play, UserCheck } from 'lucide-react';
+import { Edit2, RotateCcw, Trash2, Play, UserCheck, Trophy } from 'lucide-react';
 import { LotteryCampaign } from '../../types';
 
 interface LotteryCampaignCardProps {
@@ -73,7 +73,20 @@ export default function LotteryCampaignCard({
       }`}
     >
       {/* Header bar and badges */}
-      <div className="p-5 space-y-3 pb-3">
+      <div className="p-5 space-y-3 pb-3 relative">
+        {camp.status === 'drawn' && (
+          <>
+            <div className="absolute right-5 top-5 opacity-10 rotate-12">
+              <Trophy className="w-16 h-16 text-amber-500" />
+            </div>
+            <div className="absolute right-12 top-12 opacity-5 -rotate-12">
+              <Trophy className="w-12 h-12 text-amber-500" />
+            </div>
+            <div className="absolute right-2 top-20 opacity-5 rotate-45">
+              <Trophy className="w-10 h-10 text-amber-500" />
+            </div>
+          </>
+        )}
         <div className="flex items-center justify-between gap-2.5">
           <span className={`text-[10px] font-mono font-bold tracking-widest px-2.5 py-1 rounded-full border ${
             camp.status === 'active' 
